@@ -1,0 +1,13 @@
+node_modules/
+
+# Contains the database password and JWT secret — never commit.
+.env
+.env.local
+.env.production
+
+# Uploaded product images are runtime data, not source.
+uploads/*
+!uploads/.gitkeep
+
+*.log
+coverage/

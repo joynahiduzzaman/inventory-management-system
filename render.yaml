@@ -1,0 +1,87 @@
+# Render blueprint for the API.
+#
+# The React frontend is deployed separately on Vercel (see vercel.json); this
+# file only describes the Node/Express service.
+#
+# Import it at https://dashboard.render.com/blueprints — Render reads this file
+# from the repo root and pre-fills the service.
+#
+# Secrets are declared with `sync: false`, which means Render prompts for them
+# at deploy time and never stores them in this file or in git.
+
+services:
+  - type: web
+    name: inventory-api
+    runtime: node
+    plan: free
+    region: singapore          # closest region to Bangladesh; change if needed
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Render injects PORT itself; the server reads it and binds 0.0.0.0.
+
+      # Sit behind Render's load balancer: without this, express-rate-limit
+      # sees every request as one IP and would lock out the whole shop.
+      - key: TRUST_PROXY
+        value: "1"
+
+      # ── Database (managed MySQL, provisioned separately) ──────────────────
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+      # Most managed MySQL providers require TLS.
+      - key: DB_SSL
+        value: "true"
+
+      # ── Auth ──────────────────────────────────────────────────────────────
+      # Render generates a strong value automatically on first deploy.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+
+      # ── First-run admin account ───────────────────────────────────────────
+      # Only used while the users table is empty. Change the password after
+      # the first successful login.
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+
+      # ── Frontend origin(s) for CORS ───────────────────────────────────────
+      # Comma-separated. Set to the Vercel production URL once it exists.
+      - key: FRONTEND_URL
+        sync: false
+      - key: ALLOW_VERCEL_PREVIEWS
+        value: "true"
+
+      # Own origin, so uploaded product images pass the CSP img-src rule.
+      - key: PUBLIC_API_URL
+        sync: false
+
+      # Persistent disk mount (see `disk` below). Without a disk, uploaded
+      # product images are lost on every redeploy.
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+
+    # Render's free plan has an ephemeral filesystem. A disk keeps uploaded
+    # product images across deploys, but requires a paid instance type.
+    # Uncomment once the service is on a paid plan.
+    #
+    # disk:
+    #   name: uploads
+    #   mountPath: /var/data
+    #   sizeGB: 1

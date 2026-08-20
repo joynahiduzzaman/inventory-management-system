@@ -1,0 +1,19 @@
+# Normalise line endings in the repository to LF.
+# The API is built and run on Linux (Render); committing CRLF would break
+# shebangs and produce noisy diffs between Windows and Linux checkouts.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.ttf  binary
+*.woff binary
+*.woff2 binary
+*.pdf  binary
+
+# Lockfiles: keep diffs collapsed in review UIs.
+package-lock.json -diff

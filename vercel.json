@@ -1,0 +1,50 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+
+  "//": "Frontend-only deployment. The Express API is hosted separately (see render.yaml) because it needs a persistent process, a MySQL connection pool and a writable uploads directory — none of which serverless functions provide.",
+
+  "buildCommand": "cd frontend && npm run build",
+  "installCommand": "cd frontend && npm install",
+  "outputDirectory": "frontend/build",
+  "framework": "create-react-app",
+
+  "rewrites": [
+    {
+      "//": "Client-side routing: every path must serve index.html, or a refresh on /products returns 404.",
+      "source": "/((?!static/|favicon\\.svg|manifest\\.json|robots\\.txt).*)",
+      "destination": "/index.html"
+    }
+  ],
+
+  "headers": [
+    {
+      "source": "/static/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        {
+          "//": "This app is a till: it has no reason to read a camera other than for barcode scanning, and no reason to touch location, microphone or payment APIs.",
+          "key": "Permissions-Policy",
+          "value": "geolocation=(), microphone=(), payment=(), camera=(self)"
+        }
+      ]
+    },
+    {
+      "//": "index.html must never be cached, or users keep loading a stale bundle after a deploy.",
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    }
+  ]
+}

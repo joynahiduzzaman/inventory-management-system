@@ -1,0 +1,13 @@
+{
+  "short_name": "Domingo Shop",
+  "name": "Domingo Shop — Inventory & POS",
+  "description": "Inventory and point-of-sale management for retail shops",
+  "icons": [
+    { "src": "favicon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#6366f1",
+  "background_color": "#f8fafc"
+}

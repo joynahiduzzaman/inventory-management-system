@@ -1,0 +1,13 @@
+node_modules/
+/build
+.eslintcache
+
+# Real env values stay local; .env.example documents what is needed.
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
