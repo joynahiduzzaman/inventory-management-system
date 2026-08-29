@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const path = require('path');
 const V    = require('../utils/validate');
 const { storedName } = require('../middleware/upload');
+const CDN = require('../config/cloudinary');
 
 const INCLUDE_REFS = [
   { model: Category, as: 'category', attributes: ['id', 'name'] },
@@ -10,15 +11,34 @@ const INCLUDE_REFS = [
 ];
 
 /**
- * Writes an uploaded image to the database inside the caller's transaction and
- * returns the "/uploads/<name>" path to store on the product.
+ * Stores an uploaded image and returns the value to save on the product.
  *
- * Being part of the transaction is the point: if the product write fails, the
- * image row rolls back with it, so a failed save can never leave an orphan.
+ * With Cloudinary configured that value is an absolute https URL, so the
+ * browser fetches the picture from Cloudinary's CDN and neither the API nor the
+ * database is involved in serving it. `fileUrl()` in the frontend already
+ * passes absolute URLs through untouched, so nothing downstream changed.
+ *
+ * Without it — a fresh clone, CI, or before you have signed up — the bytes go
+ * into the database as before and the product gets "/uploads/<name>". Keeping
+ * that path means the test suite and local development need no external
+ * account, and the images written by earlier releases keep resolving.
+ *
+ * The database branch runs inside the caller's transaction, so a failed product
+ * write rolls the image back with it. The Cloudinary branch cannot: an upload
+ * to a third party is not transactional. A rolled-back create can therefore
+ * leave one unreferenced image in Cloudinary — storage, not corruption, and the
+ * safer trade than deleting a remote object from an error path that may itself
+ * be the thing that failed.
  */
 const saveUpload = async (file, transaction) => {
   if (!file) return null;
   const filename = storedName(file.originalname);
+
+  if (CDN.isConfigured()) {
+    // Cloudinary appends its own extension, so hand it the bare stem.
+    return CDN.uploadImage(file.buffer, filename.replace(/\.[a-z0-9]+$/i, ''));
+  }
+
   await ProductImage.create({
     filename,
     mimeType: file.mimetype,
@@ -28,13 +48,17 @@ const saveUpload = async (file, transaction) => {
   return `/uploads/${filename}`;
 };
 
-/** Best-effort removal of a superseded image. Never fails the request: the
- *  product already points at the new image, so a leftover row is only waste. */
-const removeStoredImage = async (imagePath) => {
-  if (!imagePath || !imagePath.startsWith('/uploads/')) return;
+/** Best-effort removal of a superseded image, whichever store holds it. Never
+ *  fails the request: the product already points at the new image, so a
+ *  leftover object is only wasted space. */
+const removeStoredImage = async (image) => {
+  if (!image) return;
   try {
-    await ProductImage.destroy({ where: { filename: path.basename(imagePath) } });
-  } catch { /* the product is already saved; a stale row is not worth a 500 */ }
+    if (CDN.isCloudinaryUrl(image)) return void await CDN.destroyImage(image);
+    if (image.startsWith('/uploads/')) {
+      await ProductImage.destroy({ where: { filename: path.basename(image) } });
+    }
+  } catch { /* the product is already saved; a stale image is not worth a 500 */ }
 };
 
 // ── List ─────────────────────────────────────────────────────────────────────

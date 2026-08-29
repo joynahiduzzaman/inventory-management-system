@@ -22,9 +22,13 @@ never pays for a CORS preflight and there is only one URL to remember.
 `backend/app.js` builds the Express app and nothing else. Two entry points wrap
 it: `backend/server.js` for a long-lived process (local development, or any
 container host — it also creates the schema and seeds the first admin), and
-`api/[...slug].js` for the Vercel function. Uploaded product images are stored
-in the database rather than on disk, so they survive on a host with no writable
-filesystem.
+`api/[...slug].js` for the Vercel function.
+
+Uploaded product images go to Cloudinary and `products.image` holds the delivery
+URL, so photos are served from Cloudinary's CDN without touching the API or the
+database. With no Cloudinary account configured the app falls back to storing
+them in the `product_images` table, so a fresh clone and the test suite work
+with no external service.
 
 See **[DEPLOYMENT.md](DEPLOYMENT.md)** for the deployment guide, environment
 variables and provider caveats.
@@ -209,7 +213,7 @@ tab. See the security note below.
 | `sales`, `sale_items` | Invoices and their line items |
 | `returns`, `return_items` | Refund ledger |
 | `expenses` | Business expenses |
-| `product_images` | Uploaded product photos, keyed by the filename in `products.image` |
+| `product_images` | Fallback image store, used only when Cloudinary is not configured |
 
 ### Note on indexes
 

@@ -48,9 +48,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      // Product images are served from this API; in production that is the
-      // deployed origin, not localhost.
-      'img-src': ["'self'", 'data:', 'blob:', 'http://localhost:5000', 'http://localhost:3000',
+      // Product images come from Cloudinary's CDN when it is configured, and
+      // from this API otherwise — in production that is the deployed origin,
+      // not localhost.
+      'img-src': ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com',
+        'http://localhost:5000', 'http://localhost:3000',
         ...(process.env.PUBLIC_API_URL ? [process.env.PUBLIC_API_URL] : [])],
     },
   },

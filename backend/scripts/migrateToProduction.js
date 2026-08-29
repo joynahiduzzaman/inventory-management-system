@@ -24,6 +24,7 @@ require('../config/env');
 const fs = require('fs');
 const path = require('path');
 const { Sequelize } = require('sequelize');
+const { parseDbUrl, sslOptions } = require('../config/parseDbUrl');
 
 const argv = process.argv.slice(2);
 const CHECK_ONLY = argv.includes('--check');
@@ -43,6 +44,10 @@ const COPY_ORDER = [
   'return_items',
   'expenses',
   'stock_movements',
+  // Normally empty — images live on Cloudinary. Listed so that anything left
+  // behind by a partial `npm run images:cloudinary` is carried over rather
+  // than silently dropped.
+  'product_images',
 ];
 
 // Tables that mean "this database is already in use".
@@ -51,6 +56,16 @@ const BUSINESS_TABLES = ['products', 'sales', 'customers', 'stock_movements'];
 const BATCH = 500;
 
 function buildTarget() {
+  // A provider's copy-paste URI carries TLS as `?ssl-mode=REQUIRED`, which
+  // mysql2 does not understand. parseDbUrl translates it into the driver's own
+  // ssl option and strips the query string; without that, this script is the
+  // first thing to fail, with a handshake error that never mentions TLS.
+  const { url: targetUrl, ssl: urlWantsSSL } = parseDbUrl(process.env.TARGET_DATABASE_URL);
+
+  // TLS on by default: every managed provider requires it, and TARGET_DB_SSL
+  // stays available to turn it off for a plain local target.
+  const useSSL = process.env.TARGET_DB_SSL !== 'false' || urlWantsSSL;
+
   const common = {
     dialect: 'mysql',
     logging: false,
@@ -58,15 +73,13 @@ function buildTarget() {
     dialectOptions: {
       timezone: '+06:00',
       connectTimeout: 30000,
-      ...(process.env.TARGET_DB_SSL === 'false'
-        ? {}
-        : { ssl: { rejectUnauthorized: false } }),
+      ...(useSSL ? { ssl: sslOptions(process.env.TARGET_DB_CA_CERT) } : {}),
     },
     pool: { max: 3, min: 0, acquire: 60000, idle: 10000 },
   };
 
-  if (process.env.TARGET_DATABASE_URL) {
-    return new Sequelize(process.env.TARGET_DATABASE_URL, common);
+  if (targetUrl) {
+    return new Sequelize(targetUrl, common);
   }
   if (!process.env.TARGET_DB_HOST) return null;
   return new Sequelize(

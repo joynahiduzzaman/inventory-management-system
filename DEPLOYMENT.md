@@ -12,24 +12,35 @@ instance somewhere else, because Vercel does not host databases.
 │                                                          │
 │   /            →  React SPA, served from the CDN         │
 │   /api/*       →  Express app  (api/[...slug].js)        │
-│   /uploads/*   →  rewritten to /api/uploads/*            │
+│   /uploads/*   →  legacy images, rewritten to /api/…     │
 └───────────────────────────┬──────────────────────────────┘
                             │ TLS
                 ┌───────────▼───────────┐
-                │  Managed MySQL 8      │   free tier
+                │  Managed MySQL 8      │   Aiven, free tier
+                └───────────────────────┘
+
+                ┌───────────────────────┐
+                │  Cloudinary           │   product images, free tier
                 └───────────────────────┘
 ```
 
 Sharing one origin means no CORS round-trip before every API call, one URL to
 remember, and no second dashboard to keep in sync.
 
+Product images are **not** in the database. They upload to Cloudinary and
+`products.image` holds the delivery URL, so the browser fetches photos straight
+from Cloudinary's CDN — neither the API nor the database is in that path. That
+keeps the free database tier's ~1 GB for inventory data, and stops a catalogue
+page from turning into dozens of database round trips.
+
 ## What had to change to run serverless
 
 | Serverless constraint | How the app handles it |
 |---|---|
 | No "boot" — a cold start would re-run schema sync on every request | `backend/app.js` only builds the app. Schema creation is a deliberate one-off: `npm run migrate:prod`. `backend/server.js` still syncs and seeds for local/long-lived runs. |
-| Read-only filesystem | Product images are stored in the `product_images` table, not on disk, and served by `backend/routes/uploads.js`. Existing `/uploads/...` URLs are unchanged. |
-| Each instance opens its own connection pool | `DB_POOL_MAX=2` in production keeps total connections well inside a free tier's cap. |
+| Read-only filesystem | Images go to Cloudinary. With no Cloudinary account configured the app falls back to the `product_images` table, so a fresh clone and the test suite still work with no external service; either way nothing is written to disk. Images written by earlier releases keep resolving at their `/uploads/...` URLs. |
+| Each instance opens its own connection pool | The cap that matters is (instances × pool size), not pool size, so production defaults to **3**. |
+| Managed MySQL requires TLS | `?ssl-mode=REQUIRED` in a provider's URI means nothing to `mysql2`, which takes TLS through a driver option instead. `config/parseDbUrl.js` translates it and strips the query string — without that the first symptom is a bare handshake error that never mentions TLS. |
 | Assets loaded by path are invisible to the bundler | `vercel.json` `includeFiles` pulls in the Bengali TTFs and pdfkit's font metrics. |
 | In-memory rate limiting is per instance | Still blunts a burst from one client, but is not relied on as a hard global cap. Login remains protected by bcrypt cost and generic error messages. |
 
@@ -50,7 +61,30 @@ relies on them.
 
 Collect: **host, port, user, password, database name**.
 
-## 2. Create the schema and (optionally) copy your local data
+## 2. Move product images to Cloudinary — before any data migration
+
+Sign up at <https://cloudinary.com> (free tier, no card). From the dashboard
+copy the **API Environment variable**, which already has the
+`cloudinary://<api_key>:<api_secret>@<cloud_name>` shape, and append it to
+`backend/.env`:
+
+```bash
+echo 'CLOUDINARY_URL=paste-it-here' >> backend/.env
+```
+
+Then move any images currently held as database blobs:
+
+```bash
+cd backend
+npm run images:cloudinary:dry    # report what would move
+npm run images:cloudinary        # upload, then repoint products.image
+```
+
+It repoints the product row before deleting the blob, so an interrupted run
+leaves the image reachable rather than dangling, and re-running is harmless.
+Do this **before** step 3, so no image bytes are copied into the new database.
+
+## 3. Create the schema and (optionally) copy your local data
 
 Run this **from your laptop**, once. It creates every table on the new database
 and can copy your existing shop data across.
@@ -71,22 +105,23 @@ data (unless `--force`), and preserves primary keys so foreign keys stay intact.
 admin from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`. Stop it once it prints
 `Created initial admin`.
 
-## 3. Deploy
+## 4. Deploy
 
 Import the GitHub repository at <https://vercel.com/new>. Everything Vercel
 needs is already in `vercel.json` — leave the framework and build settings on
 their detected values.
 
-## 4. Environment variables
+## 5. Environment variables
 
 In **Project → Settings → Environment Variables**, for the *Production*
 environment (and *Preview*, if you want preview deploys to work):
 
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | `mysql://user:pass@host:3306/dbname` from step 1 |
+| `DATABASE_URL` | the Service URI from step 1 |
 | `DB_SSL` | `true` |
-| `DB_POOL_MAX` | `2` |
+| `DB_POOL_MAX` | `3` |
+| `CLOUDINARY_URL` | `cloudinary://<api_key>:<api_secret>@<cloud_name>` |
 | `JWT_SECRET` | 48+ random characters — see below |
 | `JWT_EXPIRES_IN` | `7d` |
 | `NODE_ENV` | `production` |
@@ -100,11 +135,11 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 Do **not** set `REACT_APP_API_URL` — leaving it unset is what makes the frontend
 call the API on its own origin.
 
-`SEED_*` variables are not needed on Vercel: seeding happens in step 2.
+`SEED_*` variables are not needed on Vercel: seeding happens in step 3.
 
 Redeploy after adding variables — Vercel bakes them in at build time.
 
-## 5. Verify
+## 6. Verify
 
 ```bash
 curl https://your-app.vercel.app/api/health?db=1
