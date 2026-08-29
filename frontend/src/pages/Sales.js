@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
-import { errorMessage } from '../utils/config';
+import { errorMessage, pdfUrl } from '../utils/config';
 import { Pagination, TableSkeleton } from '../components/ui';
 
 const fmt = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0).toFixed(0));
@@ -488,26 +488,22 @@ export default function Sales({ darkMode, toggleDark }) {
               <button
                 className="btn btn-outline"
                 onClick={() => {
-                  const token = localStorage.getItem('token');
-                  window.open(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/pdf/invoice/${selected.id}?token=${token}`, '_blank');
+                  window.open(pdfUrl(`invoice/${selected.id}`), '_blank');
                 }}
               >📄 Invoice PDF</button>
               <button
                 className="btn btn-outline"
                 style={{ background: '#7c3aed', color: '#fff', border: 'none' }}
                 onClick={() => {
-                  const token = localStorage.getItem('token');
-                  window.open(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/pdf/voucher/${selected.id}?token=${token}`, '_blank');
+                  window.open(pdfUrl(`voucher/${selected.id}`), '_blank');
                 }}
               >📋 Voucher PDF</button>
               <button
                 className="btn btn-outline"
                 onClick={() => {
-                  // Open the backend Invoice PDF in a new tab — browser auto-prints it
-                  // This prints only the clean invoice, not the whole page UI
-                  const token = localStorage.getItem('token');
-                  const url   = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/pdf/invoice/${selected.id}?token=${token}&print=1`;
-                  window.open(url, '_blank');
+                  // Open the backend Invoice PDF in a new tab — the browser auto-prints
+                  // it, so only the clean invoice prints, not the whole page UI.
+                  window.open(pdfUrl(`invoice/${selected.id}`, { print: 1 }), '_blank');
                 }}
               >🖨️ Print</button>
               {parseFloat(selected.due) > 0 && (

@@ -8,14 +8,26 @@ ledger that explains every number.
 ## Architecture
 
 ```
-React SPA (Vercel)  ──HTTPS──►  Express API (Render)  ──TLS──►  MySQL 8
+                 one Vercel project
+┌──────────────────────────────────────────────┐
+│  /          React SPA, served from the CDN   │
+│  /api/*     Express app, one function        │  ──TLS──►  MySQL 8
+│  /uploads/* product images, from the database│
+└──────────────────────────────────────────────┘
 ```
 
-The frontend is a static Create React App bundle. The API is a long-lived Node
-process — it holds a database connection pool, repairs its own indexes at boot,
-and writes uploaded product images to disk, so it needs a real server rather
-than serverless functions. See **[DEPLOYMENT.md](DEPLOYMENT.md)** for the full
-deployment guide, environment variables and provider caveats.
+Both halves ship from a single deployment and share one origin, so the browser
+never pays for a CORS preflight and there is only one URL to remember.
+
+`backend/app.js` builds the Express app and nothing else. Two entry points wrap
+it: `backend/server.js` for a long-lived process (local development, or any
+container host — it also creates the schema and seeds the first admin), and
+`api/[...slug].js` for the Vercel function. Uploaded product images are stored
+in the database rather than on disk, so they survive on a host with no writable
+filesystem.
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for the deployment guide, environment
+variables and provider caveats.
 
 ---
 
@@ -197,6 +209,7 @@ tab. See the security note below.
 | `sales`, `sale_items` | Invoices and their line items |
 | `returns`, `return_items` | Refund ledger |
 | `expenses` | Business expenses |
+| `product_images` | Uploaded product photos, keyed by the filename in `products.image` |
 
 ### Note on indexes
 

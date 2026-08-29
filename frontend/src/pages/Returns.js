@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import { pdfUrl } from '../utils/config';
 
 const fmt  = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0).toFixed(0));
 
@@ -496,9 +497,7 @@ export default function Returns({ darkMode, toggleDark }) {
                     <button
                       className="btn btn-outline"
                       onClick={() => {
-                        const token = localStorage.getItem('token');
-                        const url   = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/pdf/return/${successData?.id}?token=${token}&print=1`;
-                        window.open(url, '_blank');
+                        window.open(pdfUrl(`return/${successData?.id}`, { print: 1 }), '_blank');
                       }}
                     >🖨️ Print Receipt</button>
                     <button className="btn btn-primary" onClick={openWizard}>🔄 New Return</button>
@@ -566,9 +565,7 @@ export default function Returns({ darkMode, toggleDark }) {
               <button
                 className="btn btn-outline"
                 onClick={() => {
-                  const token = localStorage.getItem('token');
-                  const url   = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/pdf/return/${selected?.id}?token=${token}&print=1`;
-                  window.open(url, '_blank');
+                  window.open(pdfUrl(`return/${selected?.id}`, { print: 1 }), '_blank');
                 }}
               >🖨️ Print</button>
               <button className="btn btn-primary" onClick={() => setSelected(null)}>Close</button>

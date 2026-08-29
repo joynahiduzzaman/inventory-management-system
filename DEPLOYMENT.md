@@ -1,175 +1,164 @@
 # Deployment
 
-The app is split across two hosts because the two halves have different needs:
+One Vercel project serves the whole app. The React build is served from
+Vercel's CDN; the same Express API you run locally is mounted as a single
+serverless function under `/api`. The database is a free managed MySQL 8
+instance somewhere else, because Vercel does not host databases.
 
 ```
-┌──────────────────────┐        HTTPS         ┌───────────────────────┐
-│  Vercel              │  ───────────────►    │  Render               │
-│  React SPA (static)  │                      │  Express API (Node)   │
-└──────────────────────┘                      └───────────┬───────────┘
-                                                          │ TLS
-                                              ┌───────────▼───────────┐
-                                              │  Managed MySQL 8      │
-                                              └───────────────────────┘
+                    https://your-app.vercel.app
+┌──────────────────────────────────────────────────────────┐
+│  Vercel (Hobby / free)                                   │
+│                                                          │
+│   /            →  React SPA, served from the CDN         │
+│   /api/*       →  Express app  (api/[...slug].js)        │
+│   /uploads/*   →  rewritten to /api/uploads/*            │
+└───────────────────────────┬──────────────────────────────┘
+                            │ TLS
+                ┌───────────▼───────────┐
+                │  Managed MySQL 8      │   free tier
+                └───────────────────────┘
 ```
 
-## Why the API is not on Vercel
+Sharing one origin means no CORS round-trip before every API call, one URL to
+remember, and no second dashboard to keep in sync.
 
-Vercel runs stateless serverless functions. This API needs the opposite:
+## What had to change to run serverless
 
-| Requirement | Conflict with serverless |
+| Serverless constraint | How the app handles it |
 |---|---|
-| Sequelize connection pool | Every function instance opens its own pool; a free MySQL tier runs out of connections fast |
-| Schema sync + duplicate-index repair on boot | There is no "boot" — it would re-run on every cold start |
-| `multer` disk uploads | Vercel's filesystem is read-only outside `/tmp`, and `/tmp` is wiped between invocations |
-| In-memory rate limiting | State is per-instance, so brute-force protection stops working |
-| PDFKit with bundled fonts | Works, but adds cold-start weight to every request |
-
-Render (or Railway, Fly.io, a VPS) runs it as an ordinary long-lived Node process, unchanged.
+| No "boot" — a cold start would re-run schema sync on every request | `backend/app.js` only builds the app. Schema creation is a deliberate one-off: `npm run migrate:prod`. `backend/server.js` still syncs and seeds for local/long-lived runs. |
+| Read-only filesystem | Product images are stored in the `product_images` table, not on disk, and served by `backend/routes/uploads.js`. Existing `/uploads/...` URLs are unchanged. |
+| Each instance opens its own connection pool | `DB_POOL_MAX=2` in production keeps total connections well inside a free tier's cap. |
+| Assets loaded by path are invisible to the bundler | `vercel.json` `includeFiles` pulls in the Bengali TTFs and pdfkit's font metrics. |
+| In-memory rate limiting is per instance | Still blunts a burst from one client, but is not relied on as a hard global cap. Login remains protected by bcrypt cost and generic error messages. |
 
 ---
 
-## 1. Database
+## 1. Create the database (5 minutes, free, one-time)
 
-Any MySQL 8 provider reachable over the internet works. Free tiers that fit:
+Any internet-reachable **MySQL 8** works. Free options:
 
 | Provider | Notes |
 |---|---|
-| **Aiven** | Free MySQL plan, TLS required |
-| **Clever Cloud** | Free MySQL add-on |
-| **Railway** | MySQL plugin, usage-based |
-| **PlanetScale** | MySQL-compatible; note it does not support foreign keys by default |
+| **Aiven** — recommended | Genuine MySQL 8 on a free plan. TLS required. |
+| **Clever Cloud** | Free MySQL add-on, small storage cap. |
+| **Railway** | MySQL plugin, usage-based trial credit. |
 
-Create an empty database, then collect: host, port, user, password, database name.
+Avoid PlanetScale-style providers that drop foreign-key support: this schema
+relies on them.
 
-> The schema is created automatically the first time the API starts — there is
-> no separate migration step. Sequelize `sync()` builds the tables, then
-> `dedupeIndexes` and `ensureIndexes` correct the indexes.
+Collect: **host, port, user, password, database name**.
 
-### Copying local data across
+## 2. Create the schema and (optionally) copy your local data
+
+Run this **from your laptop**, once. It creates every table on the new database
+and can copy your existing shop data across.
 
 ```bash
 cd backend
-npm run migrate:check                     # verify both ends are reachable
+TARGET_DATABASE_URL="mysql://user:pass@host:3306/db" npm run migrate:check    # connectivity + row counts
 TARGET_DATABASE_URL="mysql://user:pass@host:3306/db" npm run migrate:prod -- --dry-run
 TARGET_DATABASE_URL="mysql://user:pass@host:3306/db" npm run migrate:prod
 ```
 
-The script never writes to the local database, writes a JSON backup to
-`backend/backups/` before copying, refuses to run against a target that already
-holds data (unless `--force`), preserves primary keys so foreign keys stay
-intact, and verifies row counts and the sales total afterwards.
+The script never writes to the local database, saves a JSON backup to
+`backend/backups/` first, refuses to run against a target that already holds
+data (unless `--force`), and preserves primary keys so foreign keys stay intact.
 
----
+**Starting empty instead?** Point `backend/.env` at the new database and run
+`npm start` once locally: `server.js` creates the schema and seeds the first
+admin from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`. Stop it once it prints
+`Created initial admin`.
 
-## 2. API on Render
+## 3. Deploy
 
-1. Push this repo to GitHub.
-2. Render → **New → Blueprint** → select the repo. It reads `render.yaml`.
-3. Fill in the variables Render prompts for (declared `sync: false`, so they
-   are never stored in git):
+Import the GitHub repository at <https://vercel.com/new>. Everything Vercel
+needs is already in `vercel.json` — leave the framework and build settings on
+their detected values.
 
-   | Variable | Value |
-   |---|---|
-   | `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | From your provider |
-   | `SEED_ADMIN_EMAIL` | Your admin login |
-   | `SEED_ADMIN_PASSWORD` | 8+ characters; change it after first login |
-   | `FRONTEND_URL` | The Vercel URL (set after step 3) |
-   | `PUBLIC_API_URL` | This service's own URL, e.g. `https://inventory-api.onrender.com` |
+## 4. Environment variables
 
-   `JWT_SECRET` is generated by Render automatically. `TRUST_PROXY=1` and
-   `DB_SSL=true` are already set in the blueprint.
+In **Project → Settings → Environment Variables**, for the *Production*
+environment (and *Preview*, if you want preview deploys to work):
 
-4. Deploy, then confirm: `curl https://<your-api>.onrender.com/api/health`
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | `mysql://user:pass@host:3306/dbname` from step 1 |
+| `DB_SSL` | `true` |
+| `DB_POOL_MAX` | `2` |
+| `JWT_SECRET` | 48+ random characters — see below |
+| `JWT_EXPIRES_IN` | `7d` |
+| `NODE_ENV` | `production` |
 
-### Render free-tier caveats
-
-- **Cold starts.** Free services sleep after ~15 minutes idle; the next request
-  takes 30–60s. Unusable as a live till — upgrade to a paid instance for real
-  shop use.
-- **Ephemeral disk.** Uploaded product images are lost on redeploy. Attach a
-  persistent disk (uncomment the `disk:` block in `render.yaml`, requires a paid
-  plan) and keep `UPLOAD_DIR=/var/data/uploads`, or move uploads to object
-  storage.
-
----
-
-## 3. Frontend on Vercel
-
-1. Vercel → **Add New → Project** → import the repo.
-2. Vercel reads `vercel.json`; leave the detected settings alone.
-3. Add one environment variable, for **all** environments:
-
-   | Variable | Value |
-   |---|---|
-   | `REACT_APP_API_URL` | `https://<your-api>.onrender.com` (no trailing slash) |
-
-   This is baked in at build time, so changing it later needs a redeploy.
-
-4. Deploy. Then go back to Render and set `FRONTEND_URL` to the Vercel
-   production URL so CORS accepts it, and redeploy the API.
-
----
-
-## 4. Post-deploy checklist
+Generate the secret locally and paste the output:
 
 ```bash
-curl https://<api>/api/health                     # {"status":"OK",...}
-curl -i -X OPTIONS https://<api>/api/auth/login \
-  -H "Origin: https://<frontend>" \
-  -H "Access-Control-Request-Method: POST"        # expect access-control-allow-origin
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 ```
 
-Then in the browser:
+Do **not** set `REACT_APP_API_URL` — leaving it unset is what makes the frontend
+call the API on its own origin.
 
-- [ ] Sign in with the seeded admin, and **change the password immediately**
-- [ ] Dashboard figures load, no `NaN`
-- [ ] Product search by name and by SKU
-- [ ] Complete a sale; confirm stock drops and the ledger records it
-- [ ] Process a return; confirm stock goes back
-- [ ] Reports render
-- [ ] No console errors, no failed requests
+`SEED_*` variables are not needed on Vercel: seeding happens in step 2.
 
----
+Redeploy after adding variables — Vercel bakes them in at build time.
 
-## Environment variable reference
+## 5. Verify
 
-### Backend
+```bash
+curl https://your-app.vercel.app/api/health?db=1
+# {"status":"OK","timestamp":"…","database":"connected"}
+```
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `DATABASE_URL` *or* `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME` | yes | Database connection |
-| `DB_SSL` | prod | `true` for managed MySQL |
-| `DB_CA_CERT` | no | PEM CA to enable certificate verification |
-| `DB_POOL_MAX` | no | Cap pooled connections (default 5 in production) |
-| `JWT_SECRET` | yes | ≥ 32 chars; server refuses to start otherwise |
-| `JWT_EXPIRES_IN` | no | Default `7d` |
-| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | first run | Creates the initial admin while `users` is empty |
-| `FRONTEND_URL` | yes | Comma-separated allowed browser origins |
-| `ALLOW_VERCEL_PREVIEWS` | no | `true` also allows `*.vercel.app` previews |
-| `TRUST_PROXY` | prod | `1` behind a load balancer — required for correct rate limiting |
-| `PUBLIC_API_URL` | prod | This API's origin, for the CSP `img-src` rule |
-| `UPLOAD_DIR` | prod | Absolute path for uploaded images; use a mounted disk |
-| `NODE_ENV` | prod | `production` hides internal error details |
+`"status":"DEGRADED"` means the function is running but cannot reach MySQL:
+check `DATABASE_URL`, `DB_SSL=true`, and that the provider's firewall allows
+connections from anywhere (Vercel's function IPs are not fixed on the free plan).
 
-### Frontend
-
-| Variable | Required | Purpose |
-|---|---|---|
-| `REACT_APP_API_URL` | yes | API base URL, baked in at build time |
-| `GENERATE_SOURCEMAP` | no | `false` for smaller bundles |
-
-> `REACT_APP_*` values are compiled into the JavaScript bundle and are visible
-> to anyone using the site. Never put a secret in one.
+Then sign in and walk one sale end to end.
 
 ---
 
-## Security notes
+## Alternative: API on a long-lived host
 
-- `.env` files are git-ignored; only `.env.example` is committed.
-- No credential is hard-coded anywhere in the source — the initial admin
-  password comes from `SEED_ADMIN_PASSWORD` and is used only once.
-- Rotate `JWT_SECRET` to sign everyone out; all sessions become invalid.
-- PDF endpoints accept the JWT as a query parameter so links can open in a new
-  tab. Query strings can be recorded in browser history and access logs — keep
-  `JWT_EXPIRES_IN` short on shared machines.
+`render.yaml` still describes the older split deployment — React on Vercel, the
+Express API on Render as an ordinary Node process. Nothing in the code
+prevents it, and `server.js` is unchanged. If you go that way, set
+`REACT_APP_API_URL` on the Vercel project to the API's URL, and `FRONTEND_URL`
+on the API to the Vercel URL. Note that Render's free tier sleeps after 15
+minutes idle, which means a ~50 second wait on the first sale of the day.
+
+---
+
+## Local development
+
+```bash
+cd backend  && npm install && cp .env.example .env   # then fill in .env
+npm run dev                                          # API on :5000
+cd ../frontend && npm install && cp .env.example .env
+npm start                                            # SPA on :3000
+```
+
+Tests:
+
+```bash
+cd backend
+npm test                                             # unit — no database needed
+npm start                                            # in another terminal
+TEST_PASSWORD=… npm run test:api                     # end-to-end against the live API
+```
+
+The end-to-end suite is safe to run against a database holding real data: it
+creates its own product and category and removes both afterwards.
+
+## Security checklist
+
+- `.env` is git-ignored; only `.env.example` is committed.
+- `JWT_SECRET` under 32 characters refuses to start the app.
+- Passwords are bcrypt-hashed (cost 12) and never returned by any endpoint.
+- Login answers identically for a wrong password, an unknown email and a
+  disabled account, so the endpoint cannot enumerate users.
+- Every `/api` route except `POST /api/auth/login` and `GET /api/health`
+  requires a bearer token; user management additionally requires `role=admin`.
+- All SQL goes through Sequelize with bound replacements — no string-built SQL.
+- Uploads are capped at 3 MB and must be an image by both extension and MIME type.

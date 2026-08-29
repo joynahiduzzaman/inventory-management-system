@@ -503,9 +503,17 @@ select.form-control { cursor: pointer; }
 .search-input { padding-left: 36px !important; }
 
 /* ── POS ───────────────────────────────────────────────────────────────────── */
-.pos-layout { display: grid; grid-template-columns: 1fr 380px; gap: 16px; height: calc(100vh - 230px); min-height: 560px; }
-.pos-products { overflow-y: auto; }
-.pos-cart { position: sticky; top: 0; display: flex; flex-direction: column; height: 100%; }
+.pos-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; height: calc(100vh - 170px); min-height: 560px; }
+.pos-products { display: flex; flex-direction: column; gap: 8px; min-width: 0; overflow: hidden; }
+/* The scrolling tile area. Kept as its own class so the mobile rules below can
+   turn the inner scroller off and let the page scroll instead — a nested
+   scroll region inside a phone-height column is unusable at the till. */
+.pos-product-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.pos-cart { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow: hidden; }
+
+/* Running total pinned to the bottom of the POS on phones. Desktop keeps the
+   cart permanently in view beside the products, so it is hidden there. */
+.pos-mobile-cart-bar { display: none; }
 
 .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
 .product-card {
@@ -646,13 +654,39 @@ select.form-control { cursor: pointer; }
   }
   .modal-lg, .modal-xl { max-width: 100%; }
 
-  /* POS — stack vertically on mobile */
+  /* POS — stack vertically on mobile.
+     Both columns must drop their fixed height and inner scrollers, otherwise
+     the tile area collapses to nothing inside an auto-height grid row. */
   .pos-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     height: auto;
     min-height: unset;
   }
-  .pos-cart { position: static; height: auto; max-height: 70vh; overflow-y: auto; }
+  .pos-products       { overflow: visible; }
+  .pos-product-scroll { flex: none; min-height: 0; overflow-y: visible; }
+  .pos-cart           { position: static; height: auto; overflow: visible; }
+
+  .pos-mobile-cart-bar {
+    display: flex;
+    position: fixed;
+    left: 10px; right: 10px; bottom: 10px;
+    z-index: 60;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 13px 16px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+  }
+  /* Room to scroll past the bar, so it never covers the checkout button. */
+  .pos-layout { padding-bottom: 64px; }
 
   /* Charts grid */
   .reports-charts-row  { grid-template-columns: 1fr !important; }

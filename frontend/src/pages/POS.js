@@ -266,10 +266,10 @@ export default function POS({ darkMode, toggleDark }) {
       </div>
 
       {/* ── MAIN LAYOUT ─────────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '16px', height: 'calc(100vh - 170px)', minHeight: '560px' }}>
+      <div className="pos-layout">
 
         {/* LEFT — Products Grid */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflow: 'hidden' }}>
+        <div className="pos-products">
           <div className="card" style={{ padding: '8px 12px', flexShrink: 0 }}>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{ position: 'relative', flex: 1, minWidth: '180px' }}>
@@ -284,7 +284,7 @@ export default function POS({ darkMode, toggleDark }) {
             </div>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="pos-product-scroll">
             {loading ? (
               <div className="loading-page"><div className="spinner" /></div>
             ) : filtered.length === 0 ? (
@@ -335,7 +335,7 @@ export default function POS({ darkMode, toggleDark }) {
         </div>
 
         {/* RIGHT — Cart */}
-        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="pos-cart" id="pos-cart-panel">
           <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
             {/* Cart header */}
@@ -446,6 +446,21 @@ export default function POS({ darkMode, toggleDark }) {
           </div>
         </div>
       </div>
+
+      {/* ── MOBILE CART BAR ──────────────────────────────────────────────────
+          On a phone the cart sits below a long product list, so the running
+          total is off-screen exactly while you are adding to it. This pins the
+          count and total to the bottom and jumps to the cart on tap. Hidden on
+          desktop, where the cart is already beside the products. */}
+      {cart.length > 0 && (
+        <button
+          className="pos-mobile-cart-bar"
+          onClick={() => document.getElementById('pos-cart-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        >
+          <span>🛒 {cart.reduce((n, i) => n + i.quantity, 0)} item{cart.reduce((n, i) => n + i.quantity, 0) === 1 ? '' : 's'}</span>
+          <span>{money(total)} — review &amp; pay →</span>
+        </button>
+      )}
 
       {/* ── CAMERA MODAL ─────────────────────────────────────────────────────── */}
       {cameraOpen && (

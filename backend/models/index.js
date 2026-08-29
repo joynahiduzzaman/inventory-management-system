@@ -10,6 +10,7 @@ const Expense    = require('./Expense');
 const Return     = require('./Return');
 const ReturnItem = require('./ReturnItem');
 const StockMovement = require('./StockMovement');
+const ProductImage  = require('./ProductImage');
 
 // ── Associations ─────────────────────────────────────────────────────────────
 Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'category' });
@@ -45,5 +46,6 @@ Sale.hasMany(Return,         { foreignKey: 'saleId',     as: 'returns' });
 
 module.exports = {
   sequelize, User, Category, Supplier, Product,
-  Customer, Sale, SaleItem, Expense, Return, ReturnItem, StockMovement
+  Customer, Sale, SaleItem, Expense, Return, ReturnItem, StockMovement,
+  ProductImage
 };

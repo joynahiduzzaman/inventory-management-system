@@ -5,7 +5,17 @@
  * meant product images broke the moment the app ran anywhere but a developer
  * laptop. Everything now derives from REACT_APP_API_URL.
  */
-export const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const RAW_API_URL = (process.env.REACT_APP_API_URL || '').trim().replace(/\/+$/, '');
+
+/**
+ * Empty string means "same origin", which is what the production deployment
+ * wants: the API is served from /api on the very host the page came from, so
+ * hard-coding a URL there would only be one more thing to get out of date after
+ * a domain change. A dev build with no variable set still needs the port, since
+ * the React dev server and the API run separately.
+ */
+export const API_BASE = RAW_API_URL
+  || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000');
 
 /** Absolute URL for an uploaded file path such as "/uploads/product-123.png". */
 export const fileUrl = (p) => (!p ? null : /^https?:\/\//i.test(p) ? p : `${API_BASE}${p}`);

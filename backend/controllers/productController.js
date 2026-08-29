@@ -1,22 +1,40 @@
-const { Product, Category, Supplier, StockMovement, sequelize } = require('../models');
+const { Product, Category, Supplier, StockMovement, ProductImage, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const path = require('path');
-const fs   = require('fs');
 const V    = require('../utils/validate');
+const { storedName } = require('../middleware/upload');
 
 const INCLUDE_REFS = [
   { model: Category, as: 'category', attributes: ['id', 'name'] },
   { model: Supplier, as: 'supplier', attributes: ['id', 'name'] },
 ];
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR
-  ? path.resolve(process.env.UPLOAD_DIR)
-  : path.join(__dirname, '../uploads');
+/**
+ * Writes an uploaded image to the database inside the caller's transaction and
+ * returns the "/uploads/<name>" path to store on the product.
+ *
+ * Being part of the transaction is the point: if the product write fails, the
+ * image row rolls back with it, so a failed save can never leave an orphan.
+ */
+const saveUpload = async (file, transaction) => {
+  if (!file) return null;
+  const filename = storedName(file.originalname);
+  await ProductImage.create({
+    filename,
+    mimeType: file.mimetype,
+    size:     file.size,
+    data:     file.buffer,
+  }, { transaction });
+  return `/uploads/${filename}`;
+};
 
-const removeUpload = (file) => {
-  if (!file) return;
-  const fp = path.join(UPLOAD_DIR, file.filename);
-  if (fs.existsSync(fp)) { try { fs.unlinkSync(fp); } catch { /* best effort */ } }
+/** Best-effort removal of a superseded image. Never fails the request: the
+ *  product already points at the new image, so a leftover row is only waste. */
+const removeStoredImage = async (imagePath) => {
+  if (!imagePath || !imagePath.startsWith('/uploads/')) return;
+  try {
+    await ProductImage.destroy({ where: { filename: path.basename(imagePath) } });
+  } catch { /* the product is already saved; a stale row is not worth a 500 */ }
 };
 
 // ── List ─────────────────────────────────────────────────────────────────────
@@ -138,7 +156,7 @@ exports.getMovements = async (req, res) => {
 };
 
 // ── Create / update ──────────────────────────────────────────────────────────
-const parseProductData = (body, file) => {
+const parseProductData = (body) => {
   const data = {
     name:          V.reqString(body.name, 'Product name', { max: 200 }),
     sku:           V.optString(body.sku, 'SKU', { max: 100 }),
@@ -161,14 +179,15 @@ const parseProductData = (body, file) => {
       'price'
     );
   }
-  if (file) data.image = `/uploads/${file.filename}`;
   return data;
 };
 
 exports.create = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const data = parseProductData(req.body, req.file);
+    const data = parseProductData(req.body);
+    const image = await saveUpload(req.file, t);
+    if (image) data.image = image;
     const product = await Product.create(data, { transaction: t });
 
     // Opening balance goes on the ledger so the running total always reconciles.
@@ -187,7 +206,6 @@ exports.create = async (req, res) => {
     res.status(201).json({ success: true, data: full });
   } catch (err) {
     await t.rollback();
-    removeUpload(req.file);
     V.handle(res, err, 'Could not create product');
   }
 };
@@ -198,7 +216,13 @@ exports.update = async (req, res) => {
     const product = await Product.findByPk(req.params.id, { transaction: t });
     if (!product) { await t.rollback(); return res.status(404).json({ success: false, message: 'Product not found' }); }
 
-    const data = parseProductData(req.body, req.file);
+    const data = parseProductData(req.body);
+
+    // Held for after the commit: the old image must not be dropped while the
+    // transaction that repoints the product at the new one can still roll back.
+    const previousImage = product.image;
+    const image = await saveUpload(req.file, t);
+    if (image) data.image = image;
 
     // A stock edit from the product form is a real inventory movement — log it
     // rather than letting the number change silently.
@@ -219,17 +243,15 @@ exports.update = async (req, res) => {
 
     await t.commit();
 
-    // Only delete the previous image once the DB change is safely committed.
-    if (req.file && product.image && product.image !== data.image) {
-      const old = path.join(UPLOAD_DIR, path.basename(product.image));
-      if (fs.existsSync(old)) { try { fs.unlinkSync(old); } catch { /* best effort */ } }
+    // Only now, with the new image safely committed, is the old one dead weight.
+    if (image && previousImage && previousImage !== image) {
+      await removeStoredImage(previousImage);
     }
 
     const updated = await Product.findByPk(product.id, { include: INCLUDE_REFS });
     res.json({ success: true, data: updated });
   } catch (err) {
     await t.rollback();
-    removeUpload(req.file);
     V.handle(res, err, 'Could not update product');
   }
 };

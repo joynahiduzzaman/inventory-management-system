@@ -1,0 +1,19 @@
+{
+  "name": "inventory-system",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Inventory management system — React frontend and Express API, deployed as one Vercel project",
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "dev": "cd backend && npm run dev",
+    "dev:web": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "test": "cd backend && npm test",
+    "test:api": "cd backend && npm run test:api",
+    "migrate:prod": "cd backend && npm run migrate:prod",
+    "migrate:check": "cd backend && npm run migrate:check"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

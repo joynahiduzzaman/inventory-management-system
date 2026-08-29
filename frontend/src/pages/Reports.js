@@ -7,6 +7,7 @@ import {
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import { pdfUrl } from '../utils/config';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, Filler);
 
@@ -505,20 +506,16 @@ export default function Reports({ darkMode, toggleDark }) {
             </button>
             <button
               onClick={() => {
-                const token = localStorage.getItem('token');
-                const base  = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-                const qs    = dateFrom && dateTo ? `from=${dateFrom}&to=${dateTo}` : '';
-                window.open(`${base}/api/pdf/sales-report?${qs}&token=${token}`, '_blank');
+                const range = dateFrom && dateTo ? { from: dateFrom, to: dateTo } : {};
+                window.open(pdfUrl('sales-report', range), '_blank');
               }}
               style={{ padding: '8px 18px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(124,58,237,0.3)' }}>
               📊 Sales PDF
             </button>
             <button
               onClick={() => {
-                const token = localStorage.getItem('token');
-                const base  = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-                const qs    = dateFrom && dateTo ? `from=${dateFrom}&to=${dateTo}` : '';
-                window.open(`${base}/api/pdf/product-sales?${qs}&token=${token}`, '_blank');
+                const range = dateFrom && dateTo ? { from: dateFrom, to: dateTo } : {};
+                window.open(pdfUrl('product-sales', range), '_blank');
               }}
               style={{ padding: '8px 18px', background: '#0891b2', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(8,145,178,0.3)' }}>
               📦 Product PDF

@@ -27,6 +27,10 @@ if (!PASSWORD) {
 }
 let TOKEN = '', STAFF = '';
 const results = [];
+// Every category this run creates, so the suite can leave the database as it
+// found it. Without this, each run permanently added another "AUDIT Cat …" to
+// the shop's real category list.
+const createdCategories = [];
 
 async function call(m, p, body, tok) {
   const h = {};
@@ -76,6 +80,7 @@ function check(name, cond, detail) {
 
   // Self-contained: make our own category so the suite never depends on seeds.
   r = await call('POST', '/categories', { name: 'AUDIT Cat ' + Date.now() });
+  if (r.d && r.d.data && r.d.data.id) createdCategories.push(r.d.data.id);
   const CATID = r.d && r.d.data && r.d.data.id;
   check('create test category', r.status === 201, 'id=' + CATID);
 
@@ -160,7 +165,9 @@ function check(name, cond, detail) {
   r = await call('POST', '/categories', { name: '' });
   check('reject empty category name', r.status >= 400, 'status=' + r.status);
   r = await call('POST', '/categories', { name: 'AUDIT Cat dup' });
-  await call('POST', '/categories', { name: 'AUDIT Cat dup2' });
+  if (r.d && r.d.data && r.d.data.id) createdCategories.push(r.d.data.id);
+  const dup2 = await call('POST', '/categories', { name: 'AUDIT Cat dup2' });
+  if (dup2.d && dup2.d.data && dup2.d.data.id) createdCategories.push(dup2.d.data.id);
   r = await call('POST', '/categories', { name: 'AUDIT Cat dup' });
   check('reject duplicate category', r.status >= 400, 'status=' + r.status);
   r = await call('POST', '/suppliers', { name: '' });
@@ -228,7 +235,14 @@ function check(name, cond, detail) {
   check('duplicate cart lines merged for stock check (3+4 > 5 rejected)', r.status >= 400, 'status=' + r.status + ' ' + String(r.d && r.d.message).slice(0, 60));
 
   // ---------- CLEAN UP WHAT THIS RUN CREATED ----------
+  // The suite is meant to be safe to run against a database holding real shop
+  // data, which means it has to remove its own fixtures too — not just archive
+  // the product. force=true uncategorises rather than deletes any product still
+  // pointing at a test category, so nothing real is destroyed.
   await call('DELETE', '/products/' + PID).catch(() => {});
+  for (const id of createdCategories) {
+    await call('DELETE', '/categories/' + id + '?force=true').catch(() => {});
+  }
 
   const f = results.filter(x => !x.pass);
   console.log('\n===== ' + (results.length - f.length) + '/' + results.length + ' passed, ' + f.length + ' FAILED =====');
