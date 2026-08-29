@@ -1,0 +1,200 @@
+/**
+ * Design tokens — the single source of truth for colour, space, type and depth.
+ *
+ * Rules this file exists to enforce:
+ *
+ *  1. ONE accent. Indigo/violet gradients were being used as decoration on
+ *     buttons, headers, tiles and totals, which left nothing distinctive for
+ *     the things that actually matter at a counter.
+ *  2. Green, amber and red mean STATUS ONLY — stock level and payment state.
+ *     Never a heading, never a decorative background. If a colour is carrying
+ *     meaning, it must be one of these three, and if it is not carrying
+ *     meaning it must be neutral.
+ *  3. Every value here has a role name, not a colour name. `--danger` can be
+ *     re-tuned once; `#ef4444` sprinkled through 900 inline styles cannot.
+ *
+ * Contrast: every foreground/background pairing below meets WCAG AA (4.5:1)
+ * for body text at both themes. Status colours darken in light mode and
+ * lighten in dark mode precisely so that stays true.
+ */
+
+:root {
+  /* ── Type ───────────────────────────────────────────────────────────────
+     Latin first so digits, prices and SKUs keep one shape in both languages;
+     Bengali falls through to Hind Siliguri per-glyph. */
+  --font-sans: 'Plus Jakarta Sans', 'Hind Siliguri', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-bn:   'Hind Siliguri', 'Plus Jakarta Sans', system-ui, sans-serif;
+  /* System mono: SKUs and barcode values only. Bundling a mono webfont for
+     that was 50 KB to style a dozen labels. */
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Type scale — 1.200 minor third, rounded to whole pixels.
+     Bengali sits visually smaller than Latin at the same px size, so the
+     interface leans one step larger than a Latin-only design would. */
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-md:   17px;
+  --text-lg:   20px;
+  --text-xl:   24px;
+  --text-2xl:  30px;
+  --text-3xl:  36px;
+
+  --leading-tight:  1.25;
+  --leading-normal: 1.55;   /* Bengali needs more than Latin: taller matras */
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semi:   600;
+  --weight-bold:   700;
+
+  /* ── Space — 4px base ──────────────────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Radius ───────────────────────────────────────────────────────────── */
+  --radius-sm:   6px;
+  --radius:      10px;
+  --radius-lg:   14px;
+  --radius-full: 999px;
+
+  /* ── Touch ─────────────────────────────────────────────────────────────
+     44px is the floor for anything a cashier taps, per WCAG 2.5.5 and every
+     platform HIG. --tap-lg is for the POS keypad and Complete Sale. */
+  --tap:    44px;
+  --tap-lg: 56px;
+
+  /* ── Accent ───────────────────────────────────────────────────────────
+     A single deep teal. Chosen over the previous indigo/violet because the
+     status palette has to sit beside it constantly: teal is far enough from
+     both amber and red in hue that a low-stock badge never reads as "brand". */
+  --accent-50:  #eefbf8;
+  --accent-100: #d5f4ee;
+  --accent-200: #aae8de;
+  --accent-500: #0f8a76;
+  --accent-600: #0b7263;
+  --accent-700: #0a5d51;
+  --accent:      var(--accent-600);
+  --accent-hover: var(--accent-700);
+  --accent-soft:  var(--accent-50);
+  --on-accent:   #ffffff;
+
+  /* ── Status — meaning only ────────────────────────────────────────────
+     ok     in stock, paid in full
+     warn   low stock, partially paid
+     danger out of stock, overdue, destructive action */
+  --ok:        #14804a;
+  --ok-soft:   #e6f4ec;
+  --ok-border: #b7dfc8;
+
+  --warn:        #9a6206;
+  --warn-soft:   #fdf3e2;
+  --warn-border: #f2ddb4;
+
+  --danger:        #b3261e;
+  --danger-hover:  #8f1d17;
+  --danger-soft:   #fdeceb;
+  --danger-border: #f4c7c4;
+
+  --info:      #1f5fa9;
+  --info-soft: #e8f1fb;
+
+  /* ── Neutrals ─────────────────────────────────────────────────────────── */
+  --bg:          #f6f7f9;
+  --bg-card:     #ffffff;
+  --bg-subtle:   #f0f2f5;
+  --bg-hover:    #eceff3;
+  --border:      #dfe3e8;
+  --border-strong: #c4cad2;
+
+  --text-primary:   #16191d;
+  --text-secondary: #4a5058;
+  --text-muted:     #6b727c;
+  --text-inverse:   #ffffff;
+
+  --sidebar-bg:     #14181d;
+  --sidebar-text:   #c3c9d1;
+  --sidebar-active: #ffffff;
+  --sidebar-hover:  rgba(255, 255, 255, 0.07);
+
+  /* ── Depth — restrained; borders do most of the separating ────────────── */
+  --shadow-sm: 0 1px 2px rgba(16, 20, 26, 0.06);
+  --shadow:    0 2px 6px rgba(16, 20, 26, 0.08);
+  --shadow-md: 0 6px 16px rgba(16, 20, 26, 0.10);
+  --shadow-lg: 0 16px 40px rgba(16, 20, 26, 0.16);
+
+  --ring: 0 0 0 3px var(--accent-100);
+
+  /* ── Motion ───────────────────────────────────────────────────────────── */
+  --transition: 140ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Dark ─────────────────────────────────────────────────────────────────
+   Status colours lighten here rather than keeping their light-mode values,
+   which would drop below AA on a dark card and make a low-stock warning
+   harder to see exactly where it matters most. */
+[data-theme='dark'] {
+  --accent-500: #2bb49b;
+  --accent-600: #23a08a;
+  --accent:      #2bb49b;
+  --accent-hover: #46c7b0;
+  --accent-soft: rgba(43, 180, 155, 0.14);
+  --accent-100:  rgba(43, 180, 155, 0.24);
+  --on-accent:   #04211c;
+
+  --ok:        #4ade80;
+  --ok-soft:   rgba(74, 222, 128, 0.13);
+  --ok-border: rgba(74, 222, 128, 0.3);
+
+  --warn:        #fbbf5c;
+  --warn-soft:   rgba(251, 191, 92, 0.13);
+  --warn-border: rgba(251, 191, 92, 0.3);
+
+  --danger:        #f87171;
+  --danger-hover:  #fca5a5;
+  --danger-soft:   rgba(248, 113, 113, 0.13);
+  --danger-border: rgba(248, 113, 113, 0.32);
+
+  --info:      #7cb2f0;
+  --info-soft: rgba(124, 178, 240, 0.13);
+
+  --bg:          #0e1116;
+  --bg-card:     #171b21;
+  --bg-subtle:   #1d222a;
+  --bg-hover:    #232932;
+  --border:      #2a313a;
+  --border-strong: #3a424d;
+
+  --text-primary:   #eceef1;
+  --text-secondary: #b3bac3;
+  --text-muted:     #868e99;
+  --text-inverse:   #0e1116;
+
+  --sidebar-bg:     #0a0d11;
+  --sidebar-text:   #99a2ad;
+  --sidebar-active: #ffffff;
+  --sidebar-hover:  rgba(255, 255, 255, 0.06);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow:    0 2px 6px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Bengali needs a little more line height and a slightly larger optical size
+   than Latin at the same nominal px, or matras collide with the row above. */
+:root[lang='bn'] body {
+  font-family: var(--font-bn);
+  line-height: var(--leading-normal);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --transition: 0ms; }
+}

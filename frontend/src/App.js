@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { I18nProvider } from './i18n';
 import './App.css';
 import './shop-ui.css';
 
@@ -62,23 +63,38 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <LocalisedApp />
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}
+
+/**
+ * Sits inside AuthProvider so the language preference can be keyed to the
+ * signed-in user: a shared till often has an owner who reads English and staff
+ * who read Bangla, and one global setting would make them fight over it.
+ */
+function LocalisedApp() {
+  const { user } = useAuth();
+  return (
+    <I18nProvider userId={user ? user.id : null}>
         <Toaster
           position="top-right"
           toastOptions={{
             duration: 3000,
             style: {
-              background: '#1e293b', color: '#f1f5f9',
-              borderRadius: '10px', fontSize: '13px',
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: '500', border: '1px solid #334155',
-              boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)'
+              background: 'var(--text-primary)', color: 'var(--bg-card)',
+              borderRadius: 'var(--radius)', fontSize: 'var(--text-sm)',
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 'var(--weight-medium)',
+              boxShadow: 'var(--shadow-lg)',
+              maxWidth: '420px',
             },
-            success: { iconTheme: { primary: '#22c55e', secondary: '#fff' } },
-            error:   { iconTheme: { primary: '#ef4444', secondary: '#fff' } }
+            success: { iconTheme: { primary: 'var(--ok)', secondary: 'var(--bg-card)' } },
+            error:   { iconTheme: { primary: 'var(--danger)', secondary: 'var(--bg-card)' }, duration: 5000 }
           }}
         />
         <AppContent />
-      </AuthProvider>
-    </BrowserRouter>
+    </I18nProvider>
   );
 }

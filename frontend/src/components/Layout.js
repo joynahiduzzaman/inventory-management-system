@@ -1,10 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import { useT, LANGUAGES } from '../i18n';
+
+/**
+ * Language switch.
+ *
+ * A visible two-state segmented control rather than a dropdown: it is one tap
+ * either way, and the option you are NOT on is readable at a glance, so someone
+ * who cannot read the current language can still find their way out of it. A
+ * select would hide the escape hatch behind a menu written in the language
+ * they cannot read.
+ */
+function LanguageToggle() {
+  const { lang, setLang, t } = useT();
+  return (
+    <div className="lang-toggle" role="group" aria-label={t('header.language')}>
+      {LANGUAGES.map((l) => (
+        <button
+          key={l.code}
+          type="button"
+          className={`lang-opt ${lang === l.code ? 'is-active' : ''}`}
+          aria-pressed={lang === l.code}
+          aria-label={l.code === 'bn' ? t('header.switchToBangla') : t('header.switchToEnglish')}
+          onClick={() => setLang(l.code)}
+        >
+          {l.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function Layout({ children, title, subtitle, actions, darkMode, toggleDark }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { pathname } = useLocation();
+  const { t } = useT();
 
   // Close the drawer when the route actually changes. Keying this off `children`
   // fired on every parent re-render, so the drawer slammed shut mid-interaction.
@@ -45,7 +76,7 @@ export default function Layout({ children, title, subtitle, actions, darkMode, t
           <button
             className="hamburger-btn"
             onClick={() => setSidebarOpen(true)}
-            aria-label="Open menu"
+            aria-label={t('header.openMenu')}
           >
             ☰
           </button>
@@ -57,6 +88,7 @@ export default function Layout({ children, title, subtitle, actions, darkMode, t
 
           <div className="header-actions">
             {actions}
+            <LanguageToggle />
           </div>
         </header>
 
