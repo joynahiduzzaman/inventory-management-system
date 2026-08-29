@@ -5,7 +5,7 @@
  * serverless function. This file adds the parts only a persistent process
  * should do: create/verify the schema, seed the first admin, and listen.
  */
-require('dotenv').config();
+require('./config/env');
 const app = require('./app');
 const { sequelize, User, Category, Supplier } = require('./models');
 const dedupeIndexes = require('./config/dedupeIndexes');

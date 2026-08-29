@@ -12,7 +12,7 @@
  * real way to corrupt a schema. Production schema creation is a deliberate,
  * one-off step: `npm run migrate:prod` (see DEPLOYMENT.md).
  */
-require('dotenv').config();
+require('./config/env');
 const express   = require('express');
 const cors      = require('cors');
 const path      = require('path');

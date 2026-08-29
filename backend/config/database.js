@@ -1,5 +1,5 @@
 const { Sequelize } = require('sequelize');
-require('dotenv').config();
+require('./env');
 
 const isProd = process.env.NODE_ENV === 'production';
 

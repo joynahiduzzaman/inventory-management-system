@@ -9,7 +9,7 @@
  *
  * See config/dedupeIndexes.js for why the duplicates accumulate.
  */
-require('dotenv').config();
+require('../config/env');
 const sequelize = require('../config/database');
 const dedupeIndexes = require('../config/dedupeIndexes');
 const ensureIndexes = require('../config/ensureIndexes');

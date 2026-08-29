@@ -13,7 +13,7 @@
  * out, so it is safe to run against a database holding real shop data.
  * Override API_URL / TEST_EMAIL / TEST_PASSWORD to point it elsewhere.
  */
-require('dotenv').config();
+require('../config/env');
 
 const BASE = (process.env.API_URL || 'http://localhost:5000') + '/api';
 const EMAIL = process.env.TEST_EMAIL || process.env.SEED_ADMIN_EMAIL || 'admin@shop.com';

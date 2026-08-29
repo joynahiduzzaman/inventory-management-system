@@ -20,7 +20,7 @@
  *     node scripts/migrateToProduction.js
  */
 
-require('dotenv').config();
+require('../config/env');
 const fs = require('fs');
 const path = require('path');
 const { Sequelize } = require('sequelize');

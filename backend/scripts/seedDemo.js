@@ -14,7 +14,7 @@
  * database that already holds real shop data.
  */
 
-require('dotenv').config();
+require('../config/env');
 const {
   sequelize, Product, Category, Supplier, Customer,
   Sale, SaleItem, Expense, User, StockMovement,
