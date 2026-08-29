@@ -31,8 +31,13 @@ async function dedupeIndexes(sequelize, { verbose = true } = {}) {
   const log = (...a) => { if (verbose) console.log(...a); };
 
   const [tables] = await sequelize.query(
-    'SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = "BASE TABLE"',
-    { replacements: [dbName] }
+    // Bound, not inlined. The literal was written with double quotes, which
+    // MySQL reads as a string only while ANSI_QUOTES is off — on a managed
+    // server that enables it (Aiven does) the same query fails with
+    // "Unknown column 'BASE TABLE'", and index repair took the whole boot down
+    // with it.
+    'SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = ?',
+    { replacements: [dbName, 'BASE TABLE'] }
   );
 
   let droppedTotal = 0;

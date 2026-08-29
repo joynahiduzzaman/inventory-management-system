@@ -18,6 +18,17 @@ const useSSL = process.env.DB_SSL === 'true' || process.env.DB_SSL === '1' || ur
 
 const common = {
   dialect: 'mysql',
+
+  // Hand Sequelize the driver rather than letting it find one.
+  //
+  // Sequelize resolves the dialect with a bare `require('mysql2')` at
+  // construction time. A bundler that traces imports statically — Vercel's
+  // does — cannot see through that, so mysql2 and its dependency tree were
+  // left out of the deployed function and every request died with
+  // "Please install mysql2 package manually". Requiring it here is a static
+  // reference the tracer follows, and it removes the runtime lookup entirely.
+  dialectModule: require('mysql2'),
+
   logging: process.env.DB_LOGGING === 'true' ? console.log : false,
 
   // Bangladesh Standard Time. All report date boundaries assume this.

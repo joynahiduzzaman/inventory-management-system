@@ -1,34 +1,29 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-
-  "//": "Single Vercel project serving both halves of the app: the React build is served from the CDN, and the Express API runs as one serverless function under /api. Sharing an origin means no CORS round-trip on every request and one URL to remember.",
-
   "installCommand": "cd backend && npm ci --omit=dev && cd ../frontend && npm ci",
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/build",
   "framework": "create-react-app",
-
   "functions": {
-    "api/[...slug].js": {
-      "//": "PDF generation is the slowest path; 30s leaves plenty of headroom and stays inside the Hobby plan's limit. includeFiles pulls in assets that are read at runtime by path, which the module tracer cannot see: the Bengali-capable TTFs, and pdfkit's own built-in font metrics.",
+    "api/index.js": {
       "maxDuration": 30,
       "includeFiles": "{backend/fonts/**,backend/node_modules/pdfkit/js/data/**}"
     }
   },
-
   "rewrites": [
     {
-      "//": "Product images are stored in the database and served by the API. The browser asks for /uploads/<file> (the path recorded on the product row); only /api/* can reach a function, so send it there. The Express app is mounted at both paths, so the same URL keeps working on a non-serverless host.",
-      "source": "/uploads/:path*",
-      "destination": "/api/uploads/:path*"
+      "source": "/api/(.*)",
+      "destination": "/api?__vpath=api/$1"
     },
     {
-      "//": "Client-side routing: every non-API path must serve index.html, or a refresh on /products returns 404.",
-      "source": "/((?!api/|uploads/|static/|favicon\\.svg|manifest\\.json|robots\\.txt).*)",
+      "source": "/uploads/(.*)",
+      "destination": "/api?__vpath=api/uploads/$1"
+    },
+    {
+      "source": "/((?!api/|uploads/|static/|favicon\\.svg|manifest\\.json|robots\\.txt|asset-manifest\\.json).*)",
       "destination": "/index.html"
     }
   ],
-
   "headers": [
     {
       "source": "/static/(.*)",
@@ -42,21 +37,31 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         {
-          "//": "This app is a till: it has no reason to read a camera other than for barcode scanning, and no reason to touch location, microphone or payment APIs.",
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
           "key": "Permissions-Policy",
           "value": "geolocation=(), microphone=(), payment=(), camera=(self)"
         }
       ]
     },
     {
-      "//": "index.html must never be cached, or users keep loading a stale bundle after a deploy.",
       "source": "/index.html",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
       ]
     }
   ]

@@ -137,6 +137,14 @@ const handle = (res, err, fallbackMessage = 'Something went wrong') => {
   if (err instanceof ValidationError) {
     return res.status(400).json({ success: false, message: err.message, field: err.field });
   }
+  // An error that already carries a deliberate status carries a message meant
+  // for the user too — pass both through. Without this, a considered failure
+  // like "not enough stock" (thrown by StockMovement.apply with status 400) or
+  // "image storage is not configured" (503) was flattened into a generic 500,
+  // telling the person at the counter nothing about what to do next.
+  if (err && Number.isInteger(err.status) && err.status >= 400 && err.status < 600) {
+    return res.status(err.status).json({ success: false, message: err.message || fallbackMessage });
+  }
   if (err && err.name === 'SequelizeUniqueConstraintError') {
     const field = err.errors && err.errors[0] && err.errors[0].path;
     const pretty = { sku: 'SKU', barcode: 'Barcode', qrCode: 'QR code', email: 'Email', name: 'Name', invoiceNo: 'Invoice number' }[field] || field || 'value';

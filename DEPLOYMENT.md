@@ -105,6 +105,24 @@ data (unless `--force`), and preserves primary keys so foreign keys stay intact.
 admin from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`. Stop it once it prints
 `Created initial admin`.
 
+## vercel.json, annotated
+
+Vercel validates `vercel.json` against a strict schema that rejects unknown
+keys, so the file itself carries no comments. What each part is for:
+
+| Setting | Why |
+|---|---|
+| `installCommand` | Installs both halves. The API's dependencies stay in `backend/node_modules`, which is where the function's module tracer resolves them from. |
+| `buildCommand` / `outputDirectory` | The React build is the static site; everything not matched by a route is served from it. |
+| `functions."api/[...slug].js"` | `maxDuration: 30` covers PDF generation, the slowest path, and stays inside the Hobby limit. `includeFiles` pulls in assets that are read at runtime *by path* and are therefore invisible to the bundler: the Bengali-capable TTFs and pdfkit's built-in font metrics. |
+| rewrite `/uploads/:path*` | Images written by older releases live behind the API, and only `/api/*` can reach a function. The Express app is mounted at both `/uploads` and `/api/uploads`, so the same URL keeps working off Vercel too. New uploads go to Cloudinary and never use this path. |
+| rewrite `/((?!api/\|uploads/\|static/\|...).*)` | Client-side routing: every non-API path serves `index.html`, or a refresh on `/products` 404s. The negative lookahead keeps API, image and build-asset paths out of it. |
+| `headers` | Long-lived immutable caching for fingerprinted `/static/*`; `must-revalidate` on `index.html` so a deploy is picked up immediately instead of serving a stale bundle. |
+
+There is deliberately **no `images` key**: product images are served by
+Cloudinary, so Vercel's image optimization is never invoked and none of its
+quota is consumed.
+
 ## 4. Deploy
 
 Import the GitHub repository at <https://vercel.com/new>. Everything Vercel

@@ -49,3 +49,17 @@ _apitest*.js
 _inspect.js
 _cleanup.js
 *.local
+
+# ── Vercel CLI ───────────────────────────────────────────────────────────────
+.vercel
+# Appended by `vercel link`. It is deliberately broad, so the .env.example
+# negations are restated below it — otherwise the one env file that SHOULD be
+# committed silently stops being tracked in a fresh clone.
+.env*
+!.env.example
+!**/.env.example
+
+# ── Database backups ─────────────────────────────────────────────────────────
+# Written by `npm run migrate:prod` before it copies anything. Full table dumps,
+# including password hashes — never commit them.
+backend/backups/

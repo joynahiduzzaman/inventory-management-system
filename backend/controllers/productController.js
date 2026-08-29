@@ -18,10 +18,18 @@ const INCLUDE_REFS = [
  * database is involved in serving it. `fileUrl()` in the frontend already
  * passes absolute URLs through untouched, so nothing downstream changed.
  *
- * Without it — a fresh clone, CI, or before you have signed up — the bytes go
- * into the database as before and the product gets "/uploads/<name>". Keeping
- * that path means the test suite and local development need no external
- * account, and the images written by earlier releases keep resolving.
+ * Without it — a fresh clone or CI — the bytes go into the database instead and
+ * the product gets "/uploads/<name>", so the test suite and local development
+ * need no external account.
+ *
+ * That fallback is DEVELOPMENT ONLY. In production it is refused outright: a
+ * misspelt or missing CLOUDINARY_URL would otherwise be invisible, and the app
+ * would quietly begin packing image blobs into a 1 GB managed database until
+ * the inventory data ran out of room. Failing the upload keeps the damage to
+ * the one action that cannot be honoured, rather than taking the till offline
+ * over an image setting — sales, stock and reporting are unaffected. The
+ * misconfiguration is also reported by /api/health and logged at boot, so it
+ * cannot sit unnoticed until someone happens to add a photo.
  *
  * The database branch runs inside the caller's transaction, so a failed product
  * write rolls the image back with it. The Cloudinary branch cannot: an upload
@@ -37,6 +45,15 @@ const saveUpload = async (file, transaction) => {
   if (CDN.isConfigured()) {
     // Cloudinary appends its own extension, so hand it the bare stem.
     return CDN.uploadImage(file.buffer, filename.replace(/\.[a-z0-9]+$/i, ''));
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    const err = new Error(
+      'Image storage is not configured on the server, so the picture was not saved. ' +
+      'Set CLOUDINARY_URL in the deployment environment. The product itself was not changed.'
+    );
+    err.status = 503;
+    throw err;
   }
 
   await ProductImage.create({

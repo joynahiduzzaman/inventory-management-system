@@ -1,7 +1,22 @@
-# Nothing here is needed to build or run the deployment, and everything here
-# makes the upload slower.
-backend/uploads/*
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# `vercel deploy` uploads the working directory, and .gitignore does NOT apply
+# to that upload. Without these lines the local backend/.env — real database
+# password, Cloudinary secret, JWT signing key — would be packaged into the
+# deployment and would silently override the environment variables configured
+# on the project.
+.env
+.env.*
+**/.env
+**/.env.*
+.vercel
+
+# ── Local data ───────────────────────────────────────────────────────────────
+# Full table dumps written by the migration script, password hashes included.
 backend/backups/
+# Images written by older releases; product photos now live on Cloudinary.
+backend/uploads/*
+
+# ── Not needed to build or run ───────────────────────────────────────────────
 backend/tests/
 backend/scripts/
 frontend/build/

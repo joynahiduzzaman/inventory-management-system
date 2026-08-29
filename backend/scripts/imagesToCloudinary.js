@@ -41,18 +41,23 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR
 
   await sequelize.authenticate();
 
-  const products = await Product.findAll({
-    where: { isActive: true },
-    attributes: ['id', 'name', 'image'],
-  });
+  // Archived products are included deliberately. Archiving is reversible here
+  // (PATCH /products/:id/restore) and sales history still shows the item, so
+  // leaving their images behind would quietly break every restored product and
+  // every historical invoice that displays a picture.
+  const products = await Product.findAll({ attributes: ['id', 'name', 'image', 'isActive'] });
 
-  const pending = products.filter(p => p.image && p.image.startsWith('/uploads/'));
-  const already = products.filter(p => p.image && CDN.isCloudinaryUrl(p.image)).length;
+  const pending  = products.filter(p => p.image && p.image.startsWith('/uploads/'));
+  const already  = products.filter(p => p.image && CDN.isCloudinaryUrl(p.image)).length;
+  const archived = pending.filter(p => !p.isActive).length;
 
-  console.log(`${products.length} active products — ${pending.length} to move, ${already} already on Cloudinary\n`);
+  console.log(`${products.length} products — ${pending.length} to move ` +
+              `(${pending.length - archived} active, ${archived} archived), ` +
+              `${already} already on Cloudinary\n`);
 
   if (DRY_RUN) {
-    pending.forEach(p => console.log(`  would move  #${p.id}  ${p.name}  ${p.image}`));
+    pending.forEach(p => console.log(
+      `  would move  #${p.id}${p.isActive ? '' : ' (archived)'}  ${p.name}  ${p.image}`));
     await sequelize.close();
     return;
   }

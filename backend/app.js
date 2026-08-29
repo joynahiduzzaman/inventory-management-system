@@ -43,6 +43,17 @@ if (!process.env.DATABASE_URL && !process.env.DB_NAME) {
   throw new Error('No database configured. Set DATABASE_URL, or DB_HOST/DB_USER/DB_PASSWORD/DB_NAME.');
 }
 
+// Image storage is a production requirement, not a nicety. Uploads are refused
+// outright rather than silently falling back to database blobs (see
+// productController.saveUpload), but a refused upload is only noticed when
+// somebody happens to add a photo — so say it at boot as well, and report it
+// from /api/health, where monitoring will see it on day one.
+const imageStorageReady = require('./config/cloudinary').isConfigured();
+if (isProd && !imageStorageReady) {
+  console.error('❌ CLOUDINARY_URL is not set. Product image uploads will be REFUSED.');
+  console.error('   Set it in the deployment environment and redeploy.');
+}
+
 // ── Security headers ─────────────────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
@@ -156,7 +167,16 @@ app.use('/api/reports',    require('./routes/reports'));
 app.use('/api/pdf',        require('./routes/pdf'));
 
 app.get('/api/health', async (req, res) => {
-  const body = { status: 'OK', timestamp: new Date() };
+  const body = {
+    status: 'OK',
+    timestamp: new Date(),
+    imageStorage: imageStorageReady ? 'cloudinary' : (isProd ? 'MISCONFIGURED' : 'database (development fallback)'),
+  };
+
+  // A production deployment with no image storage is degraded, not healthy —
+  // reporting OK is exactly how a missing environment variable goes unnoticed.
+  if (isProd && !imageStorageReady) body.status = 'DEGRADED';
+
   // On serverless the usual failure is "the app booted but cannot reach the
   // database", which a static OK would hide.
   if (req.query.db === '1') {
@@ -167,7 +187,8 @@ app.get('/api/health', async (req, res) => {
       return res.status(503).json({ ...body, status: 'DEGRADED', database: 'unreachable' });
     }
   }
-  res.json(body);
+
+  res.status(body.status === 'OK' ? 200 : 503).json(body);
 });
 
 // ── Unknown API route ────────────────────────────────────────────────────────

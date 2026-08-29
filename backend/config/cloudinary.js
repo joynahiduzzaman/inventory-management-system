@@ -16,22 +16,52 @@
  * fall back to the database-blob path, so the app and its tests still work
  * end to end with no external account.
  */
-const { v2: cloudinary } = require('cloudinary');
-
 const FOLDER = process.env.CLOUDINARY_FOLDER || 'inventory-products';
 
-const isConfigured = () => Boolean(process.env.CLOUDINARY_URL || (
+/**
+ * Validate the URL's SHAPE before the SDK ever sees it.
+ *
+ * `require('cloudinary')` parses CLOUDINARY_URL at import time and throws a
+ * raw ERR_INVALID_URL if it is malformed — and Node puts the offending string,
+ * api_key and api_secret included, straight into the error output and the
+ * stack trace. So a typo in an environment variable both crashed the entire
+ * API at require time and leaked the credential into the logs.
+ *
+ * Checking the shape here means a malformed value is reported as a malformed
+ * value, by name, with nothing sensitive attached.
+ */
+const URL_SHAPE = /^cloudinary:\/\/[^:@/\s]+:[^:@/\s]+@[^:@/\s]+$/;
+
+const rawUrl = (process.env.CLOUDINARY_URL || '').trim();
+const hasDiscrete = Boolean(
   process.env.CLOUDINARY_CLOUD_NAME &&
   process.env.CLOUDINARY_API_KEY &&
   process.env.CLOUDINARY_API_SECRET
-));
+);
 
-// Only the discrete-variable form needs wiring up by hand; CLOUDINARY_URL is
-// picked up automatically. secure: true so we never hand the browser an http://
-// URL that a https:// page would refuse to load as mixed content.
+const urlIsValid = rawUrl !== '' && URL_SHAPE.test(rawUrl);
+
+if (rawUrl !== '' && !urlIsValid) {
+  console.error(
+    'CLOUDINARY_URL is set but malformed — expected ' +
+    'cloudinary://<api_key>:<api_secret>@<cloud_name> ' +
+    '(the "@<cloud_name>" part is the one usually missing). Value not shown.'
+  );
+  // Keep it away from the SDK, which would throw at import and take the API
+  // down with it.
+  delete process.env.CLOUDINARY_URL;
+}
+
+const { v2: cloudinary } = require('cloudinary');
+
+const isConfigured = () => urlIsValid || hasDiscrete;
+
+// Only the discrete-variable form needs wiring up by hand; a valid
+// CLOUDINARY_URL is picked up automatically. secure: true so we never hand the
+// browser an http:// URL that an https:// page would refuse as mixed content.
 if (isConfigured()) {
   cloudinary.config({
-    ...(process.env.CLOUDINARY_URL ? {} : {
+    ...(urlIsValid ? {} : {
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key:    process.env.CLOUDINARY_API_KEY,
       api_secret: process.env.CLOUDINARY_API_SECRET,
@@ -94,4 +124,9 @@ const destroyImage = async (url) => {
   }
 };
 
-module.exports = { cloudinary, isConfigured, uploadImage, destroyImage, isCloudinaryUrl, publicIdFromUrl, FOLDER };
+module.exports = {
+  cloudinary, isConfigured, uploadImage, destroyImage, isCloudinaryUrl, publicIdFromUrl, FOLDER,
+  // Exposed so callers can tell "you never set it" from "you set it wrong" —
+  // the variable itself is unset by then, to keep it away from the SDK.
+  urlWasMalformed: rawUrl !== '' && !urlIsValid,
+};
