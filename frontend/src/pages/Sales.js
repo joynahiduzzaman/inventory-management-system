@@ -3,11 +3,13 @@ import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { errorMessage, pdfUrl } from '../utils/config';
-import { Pagination, TableSkeleton } from '../components/ui';
+import { useT } from '../i18n';
+import Icon from '../components/Icon';
+import { Pagination, TableSkeleton, Button } from '../components/ui';
 
-const fmt = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0).toFixed(0));
 
 export default function Sales({ darkMode, toggleDark }) {
+  const { t, money, num, dateOnly } = useT();
   const [sales, setSales]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [selected, setSelected]   = useState(null);
@@ -74,7 +76,7 @@ export default function Sales({ darkMode, toggleDark }) {
     setCollecting(true);
     try {
       await api.patch(`/sales/${dueModal.id}/collect-due`, { amount: parseFloat(collectAmt) });
-      toast.success(`৳${fmt(collectAmt)} collected successfully! ✅`);
+      toast.success(t('toast.paymentRecorded', { amount: money(collectAmt) }));
       setDueModal(null);
       setCollectAmt('');
       loadSales();
@@ -85,31 +87,31 @@ export default function Sales({ darkMode, toggleDark }) {
 
   return (
     <Layout
-      title="Sales History"
-      subtitle={`${pagination.total} ${dueFilter ? 'unpaid ' : ''}transaction${pagination.total !== 1 ? 's' : ''}`}
+      title={t('sales.title')}
+      subtitle={t('sales.subtitle', { count: num(pagination.total) })}
       darkMode={darkMode} toggleDark={toggleDark}
     >
       {/* Summary Cards */}
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '16px' }}>
         <div className="stat-card green">
           <div className="stat-icon green">💰</div>
-          <div className="stat-value">৳{fmt(totalRevenue)}</div>
-          <div className="stat-label">Total Revenue</div>
+          <div className="stat-value">{money(totalRevenue)}</div>
+          <div className="stat-label">{t('sales.totalRevenue')}</div>
         </div>
         <div className="stat-card blue">
           <div className="stat-icon blue">✅</div>
-          <div className="stat-value">৳{fmt(totalPaid)}</div>
-          <div className="stat-label">Total Collected</div>
+          <div className="stat-value">{money(totalPaid)}</div>
+          <div className="stat-label">{t('sales.totalCollected')}</div>
         </div>
         <div className="stat-card red">
           <div className="stat-icon red">⏳</div>
           <div className="stat-value" style={{ color: totalDue > 0 ? '#dc2626' : '#22c55e' }}>
-            ৳{fmt(totalDue)}
+            {money(totalDue)}
           </div>
-          <div className="stat-label">Total Due</div>
+          <div className="stat-label">{t('sales.totalDue')}</div>
           {totalDue > 0 && (
             <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '4px', fontWeight: '600' }}>
-              ⚠️ {sales.filter(s => parseFloat(s.due) > 0).length} unpaid invoices
+              {t('dash.unpaidInvoices', { count: num(sales.filter(s => parseFloat(s.due) > 0).length) })}
             </div>
           )}
         </div>
@@ -118,15 +120,15 @@ export default function Sales({ darkMode, toggleDark }) {
       {/* Due Alert Banner */}
       {totalDue > 0 && (
         <div style={{ background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '20px' }}>🔴</span>
+          <Icon name="warning" size={20} className="banner-icon" />
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: '700', color: '#dc2626', fontSize: '13px' }}>
-              Outstanding Due: ৳{fmt(totalDue)} — {dueCount} invoice{dueCount !== 1 ? 's' : ''}
+            <div className="banner-title">
+              {t('sales.totalDue')}: {money(totalDue)} — {t('dash.unpaidInvoices', { count: num(dueCount) })}
             </div>
-            <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '2px' }}>
+            <div className="banner-sub">
               {dueFilter
                 ? `Showing ${filteredSales.length} due invoice${filteredSales.length !== 1 ? 's' : ''} — click 💳 Collect Due to record payment`
-                : 'Click the 🔴 Due Only filter above or 💳 Collect Due button to record a payment'
+                : t('sales.dueHint')
               }
             </div>
           </div>
@@ -135,7 +137,7 @@ export default function Sales({ darkMode, toggleDark }) {
               onClick={() => setDueFilter(true)}
               style={{ padding: '6px 14px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}
             >
-              🔴 Show Due Only
+              {t('sales.showDueOnly')}
             </button>
           )}
         </div>
@@ -145,17 +147,17 @@ export default function Sales({ darkMode, toggleDark }) {
       <div className="card" style={{ marginBottom: '16px' }}>
         <div style={{ padding: '14px 16px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>FROM</label>
+            <label className="field-label">{t('common.from')}</label>
             <input type="date" className="form-control" style={{ width: '160px' }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} max={today} />
           </div>
           <div>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>TO</label>
+            <label className="field-label">{t('common.to')}</label>
             <input type="date" className="form-control" style={{ width: '160px' }} value={dateTo} onChange={e => setDateTo(e.target.value)} max={today} />
           </div>
           <div>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>PAYMENT</label>
+            <label className="field-label">{t('sales.payment')}</label>
             <select className="form-control" style={{ width: '140px' }} value={payFilter} onChange={e => setPayFilter(e.target.value)}>
-              <option value="">All Methods</option>
+              <option value="">{t('sales.allMethods')}</option>
               <option value="cash">Cash</option>
               <option value="bkash">bKash</option>
               <option value="nagad">Nagad</option>
@@ -163,7 +165,7 @@ export default function Sales({ darkMode, toggleDark }) {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>DUE STATUS</label>
+            <label className="field-label">{t('sales.dueStatus')}</label>
             <button
               onClick={() => setDueFilter(!dueFilter)}
               style={{
@@ -176,7 +178,7 @@ export default function Sales({ darkMode, toggleDark }) {
                 transition: 'all 0.15s'
               }}
             >
-              {dueFilter ? '🔴' : '⚪'} Due Only
+              {t('status.due')}
               {dueFilter && dueCount > 0 && (
                 <span style={{ background: '#dc2626', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '11px', fontWeight: '800' }}>
                   {dueCount}
@@ -200,15 +202,15 @@ export default function Sales({ darkMode, toggleDark }) {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Invoice</th>
-                  <th>Date & Time</th>
-                  <th>Customer</th>
-                  <th className="table-hide-mobile">Items</th>
-                  <th>Total</th>
-                  <th>Paid</th>
-                  <th>Due</th>
-                  <th>Payment</th>
-                  <th>Actions</th>
+                  <th>{t('sales.invoiceNo')}</th>
+                  <th>{t('sales.dateTime')}</th>
+                  <th>{t('sales.customer')}</th>
+                  <th className="table-hide-mobile">{t('sales.items')}</th>
+                  <th>{t('common.total')}</th>
+                  <th>{t('receipt.paid')}</th>
+                  <th>{t('status.due')}</th>
+                  <th>{t('sales.payment')}</th>
+                  <th className="col-actions">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -246,10 +248,10 @@ export default function Sales({ darkMode, toggleDark }) {
                       </td>
                       <td>
                         <div style={{ fontSize: '13px', fontWeight: '600' }}>
-                          {new Date(sale.createdAt).toLocaleDateString('en-BD')}
+                          {dateOnly(sale.createdAt)}
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                          {new Date(sale.createdAt).toLocaleTimeString('en-BD', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(sale.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}
                         </div>
                       </td>
                       <td style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
@@ -257,15 +259,15 @@ export default function Sales({ darkMode, toggleDark }) {
                       </td>
                       <td>
                         <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: '12px', padding: '2px 10px', fontSize: '12px', fontWeight: '600' }}>
-                          {sale.items?.length || 0} items
+                          {t('sales.itemCount', { count: num(sale.items?.length || 0) })}
                         </span>
                       </td>
-                      <td style={{ fontWeight: '700', fontSize: '14px' }}>৳{fmt(sale.total)}</td>
-                      <td style={{ fontWeight: '700', color: '#22c55e', fontSize: '14px' }}>৳{fmt(sale.paid)}</td>
+                      <td style={{ fontWeight: '700', fontSize: '14px' }}>{money(sale.total)}</td>
+                      <td style={{ fontWeight: '700', color: '#22c55e', fontSize: '14px' }}>{money(sale.paid)}</td>
                       <td>
                         {hasDue ? (
                           <span style={{ fontWeight: '800', color: '#dc2626', fontSize: '14px' }}>
-                            ৳{fmt(due)}
+                            {money(due)}
                           </span>
                         ) : (
                           <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>—</span>
@@ -278,25 +280,17 @@ export default function Sales({ darkMode, toggleDark }) {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          <button
-                            className="btn btn-outline btn-sm"
-                            onClick={() => setSelected(sale)}
-                            style={{ fontSize: '12px' }}
-                          >
-                            🧾 View
-                          </button>
+                          <Button size="sm" variant="secondary"
+                                  icon={<Icon name="receipt" />}
+                                  onClick={() => setSelected(sale)}>
+                            {t('common.view')}
+                          </Button>
                           {hasDue && (
-                            <button
-                              onClick={() => openDueModal(sale)}
-                              style={{
-                                padding: '4px 10px', fontSize: '12px', fontWeight: '700',
-                                background: '#dc2626', color: '#fff', border: 'none',
-                                borderRadius: '6px', cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '4px'
-                              }}
-                            >
-                              💳 Collect Due
-                            </button>
+                            <Button size="sm" variant="primary"
+                                    icon={<Icon name="money" />}
+                                    onClick={() => openDueModal(sale)}>
+                              {t('sales.collectDue')}
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -321,7 +315,7 @@ export default function Sales({ darkMode, toggleDark }) {
         <div className="modal-overlay" onClick={() => setDueModal(null)}>
           <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <span className="modal-title">💳 Collect Due Payment</span>
+              <span className="modal-title">{t('sales.collectDue')}</span>
               <button className="close-btn" onClick={() => setDueModal(null)}>✕</button>
             </div>
             <div className="modal-body">
@@ -338,15 +332,15 @@ export default function Sales({ darkMode, toggleDark }) {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Sale Total</span>
-                  <span style={{ fontWeight: '700', fontSize: '14px' }}>৳{fmt(dueModal.total)}</span>
+                  <span style={{ fontWeight: '700', fontSize: '14px' }}>{money(dueModal.total)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Already Paid</span>
-                  <span style={{ fontWeight: '700', color: '#22c55e', fontSize: '14px' }}>৳{fmt(dueModal.paid)}</span>
+                  <span style={{ fontWeight: '700', color: '#22c55e', fontSize: '14px' }}>{money(dueModal.paid)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', background: '#fee2e2', borderRadius: '8px', marginTop: '4px' }}>
                   <span style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626' }}>Outstanding Due</span>
-                  <span style={{ fontSize: '18px', fontWeight: '900', color: '#dc2626' }}>৳{fmt(dueModal.due)}</span>
+                  <span style={{ fontSize: '18px', fontWeight: '900', color: '#dc2626' }}>{money(dueModal.due)}</span>
                 </div>
               </div>
 
@@ -370,13 +364,13 @@ export default function Sales({ darkMode, toggleDark }) {
                     onClick={() => setCollectAmt(parseFloat(dueModal.due).toFixed(0))}
                     style={{ flex: 1, padding: '6px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}
                   >
-                    Full Amount (৳{fmt(dueModal.due)})
+                    Full Amount ({money(dueModal.due)})
                   </button>
                   <button
                     onClick={() => setCollectAmt((parseFloat(dueModal.due) / 2).toFixed(0))}
                     style={{ flex: 1, padding: '6px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}
                   >
-                    Half (৳{fmt(parseFloat(dueModal.due) / 2)})
+                    Half ({money(parseFloat(dueModal.due) / 2)})
                   </button>
                 </div>
               </div>
@@ -387,13 +381,13 @@ export default function Sales({ darkMode, toggleDark }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
                     <span style={{ color: '#166534' }}>New Paid Amount</span>
                     <span style={{ fontWeight: '700', color: '#166534' }}>
-                      ৳{fmt(parseFloat(dueModal.paid) + parseFloat(collectAmt))}
+                      {money(parseFloat(dueModal.paid) + parseFloat(collectAmt))}
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                     <span style={{ color: '#166534' }}>Remaining Due</span>
                     <span style={{ fontWeight: '700', color: parseFloat(dueModal.due) - parseFloat(collectAmt) <= 0 ? '#166534' : '#dc2626' }}>
-                      ৳{fmt(Math.max(0, parseFloat(dueModal.due) - parseFloat(collectAmt)))}
+                      {money(Math.max(0, parseFloat(dueModal.due) - parseFloat(collectAmt)))}
                       {parseFloat(dueModal.due) - parseFloat(collectAmt) <= 0 && ' ✅ CLEARED'}
                     </span>
                   </div>
@@ -406,9 +400,8 @@ export default function Sales({ darkMode, toggleDark }) {
                 className="btn btn-primary"
                 onClick={handleCollectDue}
                 disabled={collecting || !collectAmt || parseFloat(collectAmt) <= 0}
-                style={{ background: '#22c55e', borderColor: '#22c55e' }}
               >
-                {collecting ? '⏳ Processing...' : `✅ Collect ৳${fmt(collectAmt || 0)}`}
+                {t('sales.collectDue')} — {money(collectAmt || 0)}
               </button>
             </div>
           </div>
@@ -448,9 +441,9 @@ export default function Sales({ darkMode, toggleDark }) {
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
                     <div>
                       <div style={{ fontWeight: '600', fontSize: '13px' }}>{item.productName}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.quantity} × ৳{fmt(item.price)}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.quantity} × {money(item.price)}</div>
                     </div>
-                    <span style={{ fontWeight: '700', color: 'var(--primary)' }}>৳{fmt(item.total)}</span>
+                    <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{money(item.total)}</span>
                   </div>
                 ))}
               </div>
@@ -460,21 +453,21 @@ export default function Sales({ darkMode, toggleDark }) {
                 {parseFloat(selected.discount) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Discount</span>
-                    <span style={{ color: '#dc2626', fontWeight: '600' }}>-৳{fmt(selected.discount)}</span>
+                    <span style={{ color: '#dc2626', fontWeight: '600' }}>-{money(selected.discount)}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: '1px solid var(--border)', fontWeight: '800', fontSize: '16px', marginBottom: '8px' }}>
                   <span>Total</span>
-                  <span style={{ color: 'var(--primary)' }}>৳{fmt(selected.total)}</span>
+                  <span style={{ color: 'var(--primary)' }}>{money(selected.total)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Paid</span>
-                  <span style={{ fontWeight: '700', color: '#22c55e' }}>৳{fmt(selected.paid)}</span>
+                  <span style={{ fontWeight: '700', color: '#22c55e' }}>{money(selected.paid)}</span>
                 </div>
                 {parseFloat(selected.due) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', padding: '8px 12px', background: '#fee2e2', borderRadius: '8px' }}>
                     <span style={{ fontSize: '13px', color: '#dc2626', fontWeight: '700' }}>Due Amount</span>
-                    <span style={{ fontWeight: '800', color: '#dc2626', fontSize: '15px' }}>৳{fmt(selected.due)}</span>
+                    <span style={{ fontWeight: '800', color: '#dc2626', fontSize: '15px' }}>{money(selected.due)}</span>
                   </div>
                 )}
                 {selected.note && (
@@ -490,7 +483,7 @@ export default function Sales({ darkMode, toggleDark }) {
                 onClick={() => {
                   window.open(pdfUrl(`invoice/${selected.id}`), '_blank');
                 }}
-              >📄 Invoice PDF</button>
+              >{t('sales.invoicePdf')}</button>
               <button
                 className="btn btn-outline"
                 style={{ background: '#7c3aed', color: '#fff', border: 'none' }}

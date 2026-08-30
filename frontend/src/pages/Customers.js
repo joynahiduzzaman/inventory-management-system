@@ -2,13 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
-import { errorMessage, money } from '../utils/config';
-import { useConfirm } from '../components/ui';
+import { errorMessage } from '../utils/config';
+import { useT } from '../i18n';
+import Icon from '../components/Icon';
+import { useConfirm, Button, IconButton } from '../components/ui';
 
-const fmt = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0).toFixed(2));
 const emptyForm = { name: '', phone: '', email: '', address: '' };
 
 export default function Customers({ darkMode, toggleDark }) {
+  const { t, money } = useT();
   const confirm = useConfirm();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,24 +96,24 @@ export default function Customers({ darkMode, toggleDark }) {
   const totalDue = customers.reduce((s, c) => s + parseFloat(c.dueAmount || 0), 0);
 
   return (
-    <Layout title="Customers" subtitle={`${customers.length} registered customers`} darkMode={darkMode} toggleDark={toggleDark}
-      actions={<button className="btn btn-primary" onClick={openAdd}>+ Add Customer</button>}>
+    <Layout title={t('customers.title')} subtitle={t('customers.subtitle', { count: customers.length })} darkMode={darkMode} toggleDark={toggleDark}
+      actions={<button className="btn btn-primary" onClick={openAdd}>{t('customers.addCustomer')}</button>}>
 
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '16px' }}>
         <div className="stat-card blue">
           <div className="stat-icon blue">👥</div>
           <div className="stat-value">{customers.length}</div>
-          <div className="stat-label">Total Customers</div>
+          <div className="stat-label">{t('dash.totalCustomers')}</div>
         </div>
         <div className="stat-card green">
           <div className="stat-icon green">💰</div>
-          <div className="stat-value">৳{fmt(customers.reduce((s, c) => s + parseFloat(c.totalPurchase || 0), 0))}</div>
-          <div className="stat-label">Total Revenue</div>
+          <div className="stat-value">{money(customers.reduce((s, c) => s + parseFloat(c.totalPurchase || 0), 0))}</div>
+          <div className="stat-label">{t('sales.totalRevenue')}</div>
         </div>
         <div className="stat-card red">
           <div className="stat-icon red">⏳</div>
-          <div className="stat-value">৳{fmt(totalDue)}</div>
-          <div className="stat-label">Total Due</div>
+          <div className="stat-value">{money(totalDue)}</div>
+          <div className="stat-label">{t('sales.totalDue')}</div>
         </div>
       </div>
 
@@ -119,7 +121,7 @@ export default function Customers({ darkMode, toggleDark }) {
         <div style={{ padding: '14px 16px' }}>
           <div style={{ position: 'relative', maxWidth: '320px' }}>
             <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>🔍</span>
-            <input className="form-control" style={{ paddingLeft: '32px' }} placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="form-control" style={{ paddingLeft: '32px' }} placeholder={t('common.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
       </div>
@@ -129,7 +131,7 @@ export default function Customers({ darkMode, toggleDark }) {
           <div className="table-wrapper">
             <table className="table">
               <thead>
-                <tr><th>Name</th><th>Phone</th><th>Email</th><th>Total Purchase</th><th>Due Amount</th><th>Actions</th></tr>
+                <tr><th>{t('common.name')}</th><th>{t('common.phone')}</th><th>{t('common.email')}</th><th>{t('customers.totalPurchase')}</th><th>{t('customers.dueAmount')}</th><th>{t('common.actions')}</th></tr>
               </thead>
               <tbody>
                 {customers.length === 0 ? (
@@ -139,17 +141,20 @@ export default function Customers({ darkMode, toggleDark }) {
                     <td><div style={{ fontWeight: '600' }}>{c.name}</div></td>
                     <td style={{ color: 'var(--text-secondary)' }}>{c.phone || '—'}</td>
                     <td style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{c.email || '—'}</td>
-                    <td style={{ fontWeight: '700', color: 'var(--secondary)' }}>৳{fmt(c.totalPurchase)}</td>
+                    <td style={{ fontWeight: '700', color: 'var(--secondary)' }}>{money(c.totalPurchase)}</td>
                     <td>
                       {parseFloat(c.dueAmount) > 0
-                        ? <span style={{ color: '#dc2626', fontWeight: '700' }}>৳{fmt(c.dueAmount)}</span>
-                        : <span className="badge badge-success">Cleared</span>}
+                        ? <span style={{ color: '#dc2626', fontWeight: '700' }}>{money(c.dueAmount)}</span>
+                        : <span className="badge badge-success">{t('status.cleared')}</span>}
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '6px' }}>
-                        <button className="btn btn-outline btn-sm" onClick={() => openDetail(c)}>📋 History</button>
-                        <button className="btn btn-outline btn-sm" onClick={() => openEdit(c)}>✏️</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(c)}>🗑️</button>
+                        <Button size="sm" variant="secondary" icon={<Icon name="receipt" />}
+                                onClick={() => openDetail(c)}>{t('common.history')}</Button>
+                        <IconButton size="sm" icon={<Icon name="edit" />} label={t('common.edit')}
+                                    onClick={() => openEdit(c)} />
+                        <IconButton size="sm" icon={<Icon name="trash" />} label={t('common.delete')}
+                                    variant="danger" onClick={() => handleDelete(c)} />
                       </div>
                     </td>
                   </tr>
@@ -211,8 +216,8 @@ export default function Customers({ darkMode, toggleDark }) {
                 <>
                   <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
                     {[
-                      { label: 'Total Purchase', value: `৳${fmt(detailData.totalPurchase)}`, color: 'var(--secondary)' },
-                      { label: 'Due Amount', value: `৳${fmt(detailData.dueAmount)}`, color: parseFloat(detailData.dueAmount) > 0 ? '#dc2626' : 'var(--secondary)' },
+                      { label: t('customers.totalPurchase'), value: `${money(detailData.totalPurchase)}`, color: 'var(--secondary)' },
+                      { label: t('customers.dueAmount'), value: `${money(detailData.dueAmount)}`, color: parseFloat(detailData.dueAmount) > 0 ? '#dc2626' : 'var(--secondary)' },
                       { label: 'Total Orders', value: detailData.sales?.length || 0, color: 'var(--primary)' },
                     ].map((s, i) => (
                       <div key={i} style={{ flex: 1, minWidth: '120px', background: 'var(--bg)', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
@@ -232,9 +237,9 @@ export default function Customers({ darkMode, toggleDark }) {
                             <td><span className="font-mono" style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: '700' }}>{s.invoiceNo}</span></td>
                             <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{new Date(s.createdAt).toLocaleDateString('en-BD')}</td>
                             <td><span className="badge badge-gray">{s.items?.length || 0}</span></td>
-                            <td style={{ fontWeight: '700' }}>৳{fmt(s.total)}</td>
-                            <td style={{ color: 'var(--secondary)' }}>৳{fmt(s.paid)}</td>
-                            <td style={{ color: parseFloat(s.due) > 0 ? '#dc2626' : 'inherit' }}>{parseFloat(s.due) > 0 ? `৳${fmt(s.due)}` : '—'}</td>
+                            <td style={{ fontWeight: '700' }}>{money(s.total)}</td>
+                            <td style={{ color: 'var(--secondary)' }}>{money(s.paid)}</td>
+                            <td style={{ color: parseFloat(s.due) > 0 ? '#dc2626' : 'inherit' }}>{parseFloat(s.due) > 0 ? `${money(s.due)}` : '—'}</td>
                             <td><span className="badge badge-info">{s.paymentMethod?.toUpperCase()}</span></td>
                           </tr>
                         ))}

@@ -8,9 +8,12 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
+import { useT } from '../i18n';
+import Icon from '../components/Icon';
+import { Button } from '../components/ui';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
-import { money, num, dateTime, errorMessage, todayISO } from '../utils/config';
+import { errorMessage, todayISO } from '../utils/config';
 import {
   StockBadge, Badge, EmptyState, ErrorState, TableSkeleton,
   Pagination, useDebounced, SortHeader, useSort,
@@ -27,6 +30,7 @@ const MOVEMENT_TYPES = {
 };
 
 export default function Inventory({ darkMode, toggleDark }) {
+  const { t, money, num, dateTime } = useT();
   const [tab, setTab] = useState('stock');
 
   // ── Stock tab ─────────────────────────────────────────────────────────────
@@ -123,13 +127,14 @@ export default function Inventory({ darkMode, toggleDark }) {
 
   return (
     <Layout
-      title="Stock & History"
-      subtitle="What is on the shelves, and every movement behind it"
+      title={t('inv.title')}
+      subtitle={t('inv.subtitle')}
       darkMode={darkMode} toggleDark={toggleDark}
       actions={
-        <button className="btn btn-outline" onClick={exportCsv} disabled={!filtered.length}>
-          ⬇ Export CSV
-        </button>
+        <Button variant="secondary" icon={<Icon name="box" />}
+                onClick={exportCsv} disabled={!filtered.length}>
+          {t('inv.exportCsv')}
+        </Button>
       }
     >
       {/* ── Valuation KPIs ────────────────────────────────────────────────── */}
@@ -228,9 +233,10 @@ export default function Inventory({ darkMode, toggleDark }) {
                   : 'Try a different search term or clear the filters.'
                 }
                 action={(search || statusFilter !== 'all') && (
-                  <button className="btn btn-outline" onClick={() => { setSearch(''); setStatusFilter('all'); }}>
-                    Clear filters
-                  </button>
+                  <Button variant="secondary" icon={<Icon name="refresh" />}
+                          onClick={() => { setSearch(''); setStatusFilter('all'); }}>
+                    {t('common.reset')}
+                  </Button>
                 )}
               />
             ) : (
@@ -327,13 +333,13 @@ export default function Inventory({ darkMode, toggleDark }) {
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>When</th>
-                        <th>Product</th>
-                        <th>Type</th>
-                        <th className="num">Change</th>
-                        <th className="num">Before → After</th>
-                        <th>Reference</th>
-                        <th>By</th>
+                        <th>{t('common.date')}</th>
+                        <th>{t('products.productName')}</th>
+                        <th>{t('common.status')}</th>
+                        <th className="num">{t('inv.movements')}</th>
+                        <th className="num">{t('products.stock')}</th>
+                        <th>{t('common.note')}</th>
+                        <th>{t('nav.users')}</th>
                       </tr>
                     </thead>
                     <tbody>
