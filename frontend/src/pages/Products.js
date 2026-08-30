@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { fileUrl, errorMessage } from '../utils/config';
 import { useT } from '../i18n';
 import Icon from '../components/Icon';
+import JsBarcode from 'jsbarcode';
 import {
   StockBadge, useConfirm, EmptyState, TableSkeleton, Pagination,
   Button, IconButton, ProductAvatar,
@@ -30,28 +31,38 @@ function generateSKU(name) {
   return `${prefix}-${suffix}`;
 }
 
+/**
+ * Draws a scannable CODE128 barcode.
+ *
+ * JsBarcode is bundled rather than fetched from a CDN at click time: a shop on
+ * a bad connection got a label button that silently did nothing, which is the
+ * worst kind of failure — it looks like the app is broken, not the network.
+ *
+ * The settings are not cosmetic. A CODE128 symbol needs a quiet zone either
+ * side or a reader will not see the start pattern, and a bar narrower than
+ * about 2 device pixels is destroyed by a 203dpi thermal printer's dithering.
+ * Both are why `margin` and `width` are what they are; the printed output is
+ * round-trip decoded in the barcode tests.
+ */
 function drawBarcode(canvas, code) {
-  if (!canvas || !code) return;
-  if (window.JsBarcode) {
-    try {
-      window.JsBarcode(canvas, code, {
-        format: 'CODE128', width: 2, height: 60,
-        displayValue: true, fontSize: 13, margin: 8,
-        background: '#ffffff', lineColor: '#000000', textMargin: 4,
-      });
-    } catch (e) { console.warn('Barcode draw error:', e.message); }
+  if (!canvas || !code) return false;
+  try {
+    JsBarcode(canvas, String(code), {
+      format: 'CODE128',
+      width: 2,           // module width; below 2 a thermal printer smears it
+      height: 60,
+      displayValue: true,
+      fontSize: 13,
+      margin: 10,         // quiet zone — without it readers miss the start bars
+      background: '#ffffff',
+      lineColor: '#000000',
+      textMargin: 4,
+    });
+    return true;
+  } catch (e) {
+    console.warn('Barcode draw error:', e.message);
+    return false;
   }
-}
-
-function loadJsBarcode() {
-  return new Promise((resolve) => {
-    if (window.JsBarcode) return resolve();
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
-    script.onload = resolve;
-    script.onerror = resolve;
-    document.head.appendChild(script);
-  });
 }
 
 export default function Products({ darkMode, toggleDark }) {
@@ -68,7 +79,6 @@ export default function Products({ darkMode, toggleDark }) {
   const [filterCat,    setFilterCat]    = useState('');
   const [imageFile,    setImageFile]    = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [barcodeReady, setBarcodeReady] = useState(false);
 
   // ── Low Stock Modal state ────────────────────────────────────────────────────
   const [lowStockModal,    setLowStockModal]    = useState(false);
@@ -96,19 +106,18 @@ export default function Products({ darkMode, toggleDark }) {
   const barcodeCanvasRef = useRef();
   const printCanvasRef   = useRef();
 
-  useEffect(() => { loadJsBarcode().then(() => setBarcodeReady(true)); }, []);
 
   useEffect(() => {
-    if (barcodeReady && modalOpen && form.barcode && barcodeCanvasRef.current) {
+    if (modalOpen && form.barcode && barcodeCanvasRef.current) {
       setTimeout(() => drawBarcode(barcodeCanvasRef.current, form.barcode), 50);
     }
-  }, [form.barcode, barcodeReady, modalOpen]);
+  }, [form.barcode, modalOpen]);
 
   useEffect(() => {
-    if (barcodeReady && printModal && printCanvasRef.current) {
+    if (printModal && printCanvasRef.current) {
       setTimeout(() => drawBarcode(printCanvasRef.current, printModal.barcode || printModal.sku), 50);
     }
-  }, [printModal, barcodeReady]);
+  }, [printModal]);
 
   const loadData = useCallback(async () => {
     setLoading(true);

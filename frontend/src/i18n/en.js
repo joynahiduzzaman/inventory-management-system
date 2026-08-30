@@ -189,6 +189,17 @@ const en = {
   'pos.payment.nagad': 'Nagad',
   'pos.payment.card': 'Card',
 
+  'scan.starting': 'Starting camera…',
+  'scan.pointAtCode': 'Point the camera at a barcode or QR code',
+  'scan.torch': 'Torch',
+  'scan.orTypeIt': 'Or type the code in the box above.',
+  'scan.tips': 'Hold steady 10-20cm away. Good light helps. Works with barcodes and QR codes.',
+  'scan.errPermission': 'Camera access was refused. Allow the camera for this site in your browser settings, then try again.',
+  'scan.errNoCamera': 'No camera found on this device.',
+  'scan.errInUse': 'The camera is being used by another app. Close it and try again.',
+  'scan.errInsecure': 'The camera only works over a secure (https) connection. Open the site with https, or type the code by hand.',
+  'scan.errGeneric': 'The camera could not be started.',
+
   // ── Receipt ────────────────────────────────────────────────────────────
   'receipt.invoice': 'Invoice',
   'receipt.date': 'Date',

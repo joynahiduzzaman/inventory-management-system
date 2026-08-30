@@ -1,81 +1,162 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useT } from '../i18n';
+import Icon from './Icon';
+import { Button, IconButton } from './ui';
 
+/**
+ * Camera barcode / QR scanner.
+ *
+ * Notes on the things that actually break in a shop:
+ *
+ *  - getUserMedia needs a secure context. On plain http (anything but
+ *    localhost) it fails with a browser message that never mentions HTTPS, so
+ *    that case is detected up front and named.
+ *
+ *  - The scan window used to be a fixed 260×160 box. On a narrow phone that is
+ *    wider than the video feed, and html5-qrcode then either throws or scans a
+ *    region that is partly off-frame. It is now derived from the actual video
+ *    dimensions, which is what the library's function form is for.
+ *
+ *  - Errors were matched on `err.message` substrings, which differ per browser
+ *    and per locale. `err.name` is the standardised field and is checked first.
+ *
+ *  - The formats are pinned to what a shop actually scans. The default is
+ *    every format the library knows, and each one costs decode time per frame;
+ *    narrowing to retail 1D plus QR makes it noticeably quicker to lock on.
+ *
+ *  - Torch, where the device exposes it. A shop aisle is often darker than the
+ *    counter, and this is the difference between scanning and retyping.
+ */
 export default function CameraScannerModal({ onScan, onClose }) {
+  const { t } = useT();
   const instanceRef = useRef(null);
   const lastScanRef = useRef('');
   const lastTimeRef = useRef(0);
   const mountedRef  = useRef(true);
+  const startingRef = useRef(false);
 
-  const [status,   setStatus]   = useState('Starting camera...');
+  const [status,   setStatus]   = useState('');
   const [error,    setError]    = useState('');
-  const [scanned,  setScanned]  = useState('');   // last scanned code flash
-  const [camList,  setCamList]  = useState([]);   // available cameras
-  const [camId,    setCamId]    = useState(null); // active camera id
+  const [scanned,  setScanned]  = useState('');
+  const [camList,  setCamList]  = useState([]);
+  const [camId,    setCamId]    = useState(null);
   const [starting, setStarting] = useState(false);
+  const [torchOn,  setTorchOn]  = useState(false);
+  const [hasTorch, setHasTorch] = useState(false);
 
-  // ── Start scanner with a specific camera id ────────────────────────────────
+  /** Map a DOMException to something a shopkeeper can act on. */
+  const describeError = useCallback((err) => {
+    const name = err && err.name;
+    const msg = (err && err.message) || '';
+    if (name === 'NotAllowedError' || /permission|NotAllowed/i.test(msg)) return t('scan.errPermission');
+    if (name === 'NotFoundError' || /NotFound|device not found/i.test(msg)) return t('scan.errNoCamera');
+    if (name === 'NotReadableError' || /NotReadable|Could not start/i.test(msg)) return t('scan.errInUse');
+    if (name === 'OverconstrainedError') return t('scan.errNoCamera');
+    return t('scan.errGeneric');
+  }, [t]);
+
   const startScanner = useCallback(async (deviceId) => {
-    if (starting) return;
+    if (startingRef.current) return;
+    startingRef.current = true;
     setStarting(true);
     setError('');
-    setStatus('Starting camera...');
+    setStatus(t('scan.starting'));
+    setHasTorch(false);
+    setTorchOn(false);
 
-    // Stop any existing instance first
     if (instanceRef.current) {
-      try { await instanceRef.current.stop(); } catch (_) {}
-      try { instanceRef.current.clear(); }     catch (_) {}
+      try { await instanceRef.current.stop(); } catch { /* already stopped */ }
+      try { instanceRef.current.clear(); } catch { /* nothing rendered */ }
       instanceRef.current = null;
     }
 
     try {
-      const { Html5Qrcode } = await import('html5-qrcode');
+      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
       if (!mountedRef.current) return;
 
-      const scanner = new Html5Qrcode('camera-scanner-region');
+      const formats = [
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.ITF,
+      ];
+
+      const scanner = new Html5Qrcode('camera-scanner-region', { formatsToSupport: formats, verbose: false });
       instanceRef.current = scanner;
 
-      const cameraConstraint = deviceId
-        ? { deviceId: { exact: deviceId } }
-        : { facingMode: 'environment' };  // rear on mobile, default on laptop
+      const cameraConstraint = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' };
 
       await scanner.start(
         cameraConstraint,
-        { fps: 15, qrbox: { width: 260, height: 160 }, aspectRatio: 1.5 },
+        {
+          fps: 15,
+          // Derived from the real video size rather than a fixed box, so the
+          // scan window is never wider than the frame on a narrow phone.
+          qrbox: (vw, vh) => {
+            const side = Math.floor(Math.min(vw, vh) * 0.75);
+            return { width: side, height: Math.floor(side * 0.62) };
+          },
+          aspectRatio: 1.5,
+        },
         (text) => {
           const now = Date.now();
+          // The camera decodes the same symbol on every frame while it is in
+          // view, so without this one presentation would add a dozen items.
+          // Two seconds is long enough to move the next item into frame.
           if (text === lastScanRef.current && now - lastTimeRef.current < 2000) return;
           lastScanRef.current = text;
           lastTimeRef.current = now;
           setScanned(text.trim());
-          setTimeout(() => setScanned(''), 2000);
+          setTimeout(() => { if (mountedRef.current) setScanned(''); }, 1800);
           onScan(text.trim());
         },
-        () => {} // ignore per-frame errors
+        () => {}   // per-frame decode misses are normal; not errors
       );
 
-      if (mountedRef.current) setStatus('Point camera at barcode or QR code');
+      if (!mountedRef.current) return;
+      setStatus(t('scan.pointAtCode'));
+
+      // Torch is only offered where the running track actually reports it.
+      try {
+        const caps = scanner.getRunningTrackCapabilities();
+        setHasTorch(Boolean(caps && caps.torch));
+      } catch { setHasTorch(false); }
     } catch (err) {
       if (!mountedRef.current) return;
-      const msg = err?.message || '';
-      if (msg.includes('Permission') || msg.includes('permission') || msg.includes('NotAllowed')) {
-        setError('Camera permission denied. Please allow camera access in your browser settings and try again.');
-      } else if (msg.includes('NotFound') || msg.includes('Requested device not found')) {
-        setError('No camera found on this device.');
-      } else if (msg.includes('NotReadable') || msg.includes('Could not start')) {
-        setError('Camera is in use by another app. Close other apps using the camera and try again.');
-      } else {
-        setError('Camera error: ' + (msg || 'Could not access camera.'));
-      }
+      setError(describeError(err));
     } finally {
+      startingRef.current = false;
       if (mountedRef.current) setStarting(false);
     }
-  }, [onScan, starting]);
+  }, [onScan, t, describeError]);
 
-  // ── On mount: list cameras then start ─────────────────────────────────────
+  const toggleTorch = useCallback(async () => {
+    const scanner = instanceRef.current;
+    if (!scanner) return;
+    const next = !torchOn;
+    try {
+      await scanner.applyVideoConstraints({ advanced: [{ torch: next }] });
+      setTorchOn(next);
+    } catch {
+      // Some devices advertise torch and then refuse it; stop offering it
+      // rather than leaving a button that does nothing.
+      setHasTorch(false);
+    }
+  }, [torchOn]);
+
   useEffect(() => {
     mountedRef.current = true;
 
     const init = async () => {
+      // Named explicitly: the browser's own error for this never says "HTTPS".
+      if (!window.isSecureContext) {
+        setError(t('scan.errInsecure'));
+        return;
+      }
       try {
         const { Html5Qrcode } = await import('html5-qrcode');
         const devices = await Html5Qrcode.getCameras();
@@ -83,24 +164,17 @@ export default function CameraScannerModal({ onScan, onClose }) {
 
         if (devices && devices.length > 0) {
           setCamList(devices);
-          // Prefer rear camera on mobile, last camera on laptop (usually better)
-          const preferred = devices.find(d =>
-            d.label.toLowerCase().includes('back') ||
-            d.label.toLowerCase().includes('rear') ||
-            d.label.toLowerCase().includes('environment')
-          ) || devices[devices.length - 1];
+          const preferred = devices.find(d => /back|rear|environment/i.test(d.label || ''))
+            || devices[devices.length - 1];
           setCamId(preferred.id);
           startScanner(preferred.id);
         } else {
-          setError('No camera found on this device.');
+          setError(t('scan.errNoCamera'));
         }
       } catch (err) {
         if (!mountedRef.current) return;
-        if (err?.message?.includes('Permission') || err?.message?.includes('NotAllowed')) {
-          setError('Camera permission denied. Please allow camera access in your browser and try again.');
-        } else {
-          startScanner(null); // fallback: let browser pick
-        }
+        if (err && err.name === 'NotAllowedError') setError(describeError(err));
+        else startScanner(null);          // let the browser choose
       }
     };
 
@@ -113,117 +187,77 @@ export default function CameraScannerModal({ onScan, onClose }) {
         instanceRef.current = null;
       }
     };
-  }, []); // eslint-disable-line
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Switch camera ──────────────────────────────────────────────────────────
-  const switchCamera = async (id) => {
-    setCamId(id);
-    await startScanner(id);
-  };
+  // Escape closes, like every other modal in the app.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: 'rgba(0,0,0,0.88)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 9999, padding: '20px'
-    }}>
-      <div style={{
-        background: 'var(--bg-card, #1e1e2e)',
-        borderRadius: '16px', width: '100%', maxWidth: '440px',
-        overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.6)'
-      }}>
-
-        {/* Header */}
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border, #333)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="scan-overlay" role="dialog" aria-modal="true" aria-label={t('pos.cameraScan')}>
+      <div className="scan-modal">
+        <div className="scan-head">
           <div>
-            <div style={{ fontWeight: '700', fontSize: '15px' }}>📷 Camera Scanner</div>
-            <div style={{ fontSize: '12px', color: error ? '#f87171' : '#6366f1', marginTop: '2px', fontWeight: '600' }}>
-              {error ? '⚠️ Error' : status}
-            </div>
+            <div className="scan-title">{t('pos.cameraScan')}</div>
+            <div className={`scan-status${error ? ' is-error' : ''}`}>{error ? t('error.generic') : status}</div>
           </div>
-          <button onClick={onClose} style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          <div className="ui-actions">
+            {hasTorch && (
+              <IconButton
+                icon={<Icon name="warning" />}
+                label={t('scan.torch')}
+                variant={torchOn ? 'danger' : 'outline'}
+                aria-pressed={torchOn}
+                onClick={toggleTorch}
+              />
+            )}
+            <IconButton icon={<Icon name="close" />} label={t('common.close')} variant="outline" onClick={onClose} />
+          </div>
         </div>
 
-        {/* Camera selector (only show if multiple cameras) */}
         {camList.length > 1 && (
-          <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border,#333)', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <div className="scan-cams">
             {camList.map((cam, i) => (
               <button
                 key={cam.id}
-                onClick={() => switchCamera(cam.id)}
-                style={{
-                  padding: '4px 12px', fontSize: '11px', fontWeight: '700', borderRadius: '6px', cursor: 'pointer', border: '1.5px solid',
-                  borderColor: camId === cam.id ? '#6366f1' : 'var(--border,#444)',
-                  background: camId === cam.id ? '#6366f120' : 'transparent',
-                  color: camId === cam.id ? '#6366f1' : 'var(--text-secondary,#aaa)'
-                }}
+                type="button"
+                className={`scan-cam${camId === cam.id ? ' is-active' : ''}`}
+                onClick={() => { setCamId(cam.id); startScanner(cam.id); }}
               >
-                {cam.label || `Camera ${i + 1}`}
+                {cam.label || `${t('pos.cameraScan')} ${i + 1}`}
               </button>
             ))}
           </div>
         )}
 
-        {/* Camera viewport */}
-        <div style={{ position: 'relative', background: '#000', minHeight: '260px' }}>
+        <div className="scan-viewport">
+          <div id="camera-scanner-region" />
 
-          <div id="camera-scanner-region" style={{ width: '100%' }} />
-
-          {/* Scan overlay corners — only when no error */}
           {!error && (
-            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ width: '260px', height: '160px', position: 'relative' }}>
-                {[
-                  { top: 0,    left: 0,    borderTop: '3px solid #6366f1', borderLeft: '3px solid #6366f1',   borderRadius: '4px 0 0 0' },
-                  { top: 0,    right: 0,   borderTop: '3px solid #6366f1', borderRight: '3px solid #6366f1',  borderRadius: '0 4px 0 0' },
-                  { bottom: 0, left: 0,    borderBottom: '3px solid #6366f1', borderLeft: '3px solid #6366f1', borderRadius: '0 0 0 4px' },
-                  { bottom: 0, right: 0,   borderBottom: '3px solid #6366f1', borderRight: '3px solid #6366f1', borderRadius: '0 0 4px 0' }
-                ].map((s, i) => (
-                  <div key={i} style={{ position: 'absolute', width: '22px', height: '22px', ...s }} />
-                ))}
-                {/* Scan line */}
-                <div style={{ position: 'absolute', left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, #6366f1, transparent)', animation: 'scanline 1.8s ease-in-out infinite', top: '50%' }} />
-              </div>
+            <div className="scan-reticle" aria-hidden="true">
+              <span /><span /><span /><span />
             </div>
           )}
 
-          {/* Scanned flash */}
-          {scanned && (
-            <div style={{ position: 'absolute', bottom: '10px', left: '10px', right: '10px', background: '#22c55e', color: '#fff', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', fontWeight: '700', textAlign: 'center', animation: 'fadeIn 0.2s ease' }}>
-              ✅ Scanned: {scanned}
-            </div>
-          )}
+          {scanned && <div className="scan-hit">{scanned}</div>}
 
-          {/* Error panel */}
           {error && (
-            <div style={{ padding: '30px 24px', textAlign: 'center', background: '#0d0d0d', minHeight: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-              <div style={{ fontSize: '40px' }}>📷</div>
-              <div style={{ color: '#f87171', fontSize: '13px', lineHeight: '1.6', fontWeight: '600' }}>{error}</div>
-              <button
-                onClick={() => startScanner(camId)}
-                disabled={starting}
-                style={{ marginTop: '6px', padding: '8px 20px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}
-              >
-                {starting ? '⏳ Starting...' : '🔄 Try Again'}
-              </button>
-              <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>Or use the manual barcode input above.</div>
+            <div className="scan-error">
+              <Icon name="camera" size={34} />
+              <p>{error}</p>
+              <Button variant="primary" onClick={() => startScanner(camId)} loading={starting}>
+                {t('common.retry')}
+              </Button>
+              <span className="cell-sub">{t('scan.orTypeIt')}</span>
             </div>
           )}
         </div>
 
-        {/* Footer tips */}
-        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border,#333)', fontSize: '11px', color: 'var(--text-muted,#888)', textAlign: 'center', lineHeight: '1.6' }}>
-          🔦 Good lighting helps • Hold steady 10–20 cm from barcode • Works with QR codes &amp; barcodes
-        </div>
+        <div className="scan-tips">{t('scan.tips')}</div>
       </div>
-
-      <style>{`
-        @keyframes scanline { 0% { top: 8%; } 50% { top: 88%; } 100% { top: 8%; } }
-        @keyframes fadeIn   { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        #camera-scanner-region video { border-radius: 0 !important; }
-        #camera-scanner-region img   { display: none !important; }
-      `}</style>
     </div>
   );
 }
