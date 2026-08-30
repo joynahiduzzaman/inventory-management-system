@@ -66,6 +66,7 @@ const bn = {
   'common.export': 'এক্সপোর্ট',
   'common.view': 'দেখুন',
   'common.history': 'ইতিহাস',
+  'common.status': 'অবস্থা',
   'common.actions': 'কাজ',
   'common.loading': 'লোড হচ্ছে…',
   'common.retry': 'আবার চেষ্টা করুন',

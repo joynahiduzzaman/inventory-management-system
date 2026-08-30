@@ -62,6 +62,7 @@ const en = {
   'common.export': 'Export',
   'common.view': 'View',
   'common.history': 'History',
+  'common.status': 'Status',
   'common.actions': 'Actions',
   'common.loading': 'Loading…',
   'common.retry': 'Try again',

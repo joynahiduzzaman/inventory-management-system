@@ -2,10 +2,14 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
-import { fileUrl, errorMessage, money, dateTime } from '../utils/config';
-import { StockBadge, useConfirm, EmptyState, TableSkeleton, Pagination } from '../components/ui';
+import { fileUrl, errorMessage } from '../utils/config';
+import { useT } from '../i18n';
+import Icon from '../components/Icon';
+import {
+  StockBadge, useConfirm, EmptyState, TableSkeleton, Pagination,
+  Button, IconButton, ProductAvatar,
+} from '../components/ui';
 
-const fmt      = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0));
 const emptyForm = { name: '', sku: '', barcode: '', categoryId: '', supplierId: '', price: '', cost: '', stock: '', lowStockAlert: 10, unit: 'pcs', description: '' };
 
 // ── Auto-generate a barcode number (EAN-13 style, 13 digits) ─────────────────
@@ -51,6 +55,7 @@ function loadJsBarcode() {
 }
 
 export default function Products({ darkMode, toggleDark }) {
+  const { t, money, num, dateTime } = useT();
   const [products,     setProducts]     = useState([]);
   const [categories,   setCategories]   = useState([]);
   const [suppliers,    setSuppliers]    = useState([]);
@@ -112,9 +117,9 @@ export default function Products({ darkMode, toggleDark }) {
       setProducts(p.data.data);
       setCategories(c.data.data);
       setSuppliers(s.data.data);
-    } catch (err) { toast.error('Failed to load data'); }
+    } catch (err) { toast.error(t('error.loadFailed', { thing: t('products.title') })); }
     finally { setLoading(false); }
-  }, []);
+  }, [t]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -162,7 +167,7 @@ export default function Products({ darkMode, toggleDark }) {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error(t('error.imageTooLarge', { size: '5MB' })); return; }
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
   };
@@ -170,8 +175,8 @@ export default function Products({ darkMode, toggleDark }) {
   const handleDrop = (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (!file || !file.type.startsWith('image/')) { toast.error('Please drop an image file'); return; }
-    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return; }
+    if (!file || !file.type.startsWith('image/')) { toast.error(t('error.notAnImage')); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error(t('error.imageTooLarge', { size: '5MB' })); return; }
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
   };
@@ -186,15 +191,15 @@ export default function Products({ darkMode, toggleDark }) {
       if (imageFile) formData.append('image', imageFile);
       if (editItem) {
         await api.put(`/products/${editItem.id}`, formData);
-        toast.success('Product updated');
+        toast.success(t('toast.productUpdated'));
       } else {
         await api.post('/products', formData);
-        toast.success('Product added');
+        toast.success(t('toast.productAdded'));
       }
       setModalOpen(false);
       loadData();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Error saving product');
+      toast.error(errorMessage(err, 'Could not save the product'));
     } finally { setSaving(false); }
   };
 
@@ -226,7 +231,7 @@ export default function Products({ darkMode, toggleDark }) {
   const submitAdjust = async (e) => {
     e.preventDefault();
     const qty = parseInt(adjustForm.quantity, 10);
-    if (!Number.isInteger(qty) || qty < 0) return toast.error('Enter a whole number');
+    if (!Number.isInteger(qty) || qty < 0) return toast.error(t('error.wholeNumber'));
     if (adjustForm.mode !== 'set' && qty < 1) return toast.error('Quantity must be at least 1');
     if (adjustForm.mode === 'remove' && qty > adjustFor.stock) {
       return toast.error(`Only ${adjustFor.stock} in stock`);
@@ -255,12 +260,12 @@ export default function Products({ darkMode, toggleDark }) {
     if (!printCanvasRef.current) return;
     const dataUrl = printCanvasRef.current.toDataURL('image/png');
     const win = window.open('', '_blank');
-    if (!win) return toast.error('Allow popups to print');
+    if (!win) return toast.error(t('error.allowPopups'));
     const labels = Array(printQty).fill(`
       <div class="label">
         <div class="pname">${printModal.name}</div>
         <img src="${dataUrl}" />
-        <div class="price">৳${fmt(printModal.price)}</div>
+        <div class="price">৳${Number(printModal.price).toLocaleString('en-BD')}</div>
       </div>
     `).join('');
     win.document.write(`<!DOCTYPE html><html><head><title>Barcode Labels</title>
@@ -292,24 +297,19 @@ export default function Products({ darkMode, toggleDark }) {
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage - 1) * limit, safePage * limit);
 
-  const getCatEmoji = (catName) => {
-    const map = { Electronics: '📱', Medicine: '💊', Grocery: '🛒', Clothing: '👕', Stationery: '📚' };
-    return map[catName] || '📦';
-  };
-
   return (
-    <Layout title="Products" subtitle={`${products.length} products in inventory`} darkMode={darkMode} toggleDark={toggleDark}
-      actions={<button className="btn btn-primary" onClick={openAdd}>+ Add Product</button>}>
+    <Layout title={t('products.title')} subtitle={t('products.subtitle', { count: num(products.length) })} darkMode={darkMode} toggleDark={toggleDark}
+      actions={<Button variant="primary" icon={<Icon name="plus" />} onClick={openAdd}>{t('products.addProduct')}</Button>}>
 
       {/* ── FILTERS ─────────────────────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '16px' }}>
         <div style={{ padding: '14px 16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
             <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>🔍</span>
-            <input className="form-control" style={{ paddingLeft: '32px' }} placeholder="Search by name, SKU or barcode..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="form-control" style={{ paddingLeft: '32px' }} placeholder={t('common.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <select className="form-control" style={{ width: '180px' }} value={filterCat} onChange={e => setFilterCat(e.target.value)}>
-            <option value="">All Categories</option>
+            <option value="">{t('pos.allCategories')}</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
@@ -327,7 +327,7 @@ export default function Products({ darkMode, toggleDark }) {
                 transition: 'all 0.15s'
               }}
             >
-              {lowStockFilter ? '⚠️' : '⚪'} Low Stock Only
+              {t('status.lowStock')}
               {lowStockFilter && lowStockCount > 0 && (
                 <span style={{ background: '#d97706', color: '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '11px', fontWeight: '800' }}>
                   {lowStockCount}
@@ -336,7 +336,7 @@ export default function Products({ darkMode, toggleDark }) {
             </button>
           </div>
 
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{filtered.length} results</span>
+          <span className="cell-sub">{t('products.subtitle', { count: num(filtered.length) })}</span>
         </div>
       </div>
 
@@ -350,12 +350,12 @@ export default function Products({ darkMode, toggleDark }) {
           <span style={{ fontSize: '20px' }}>⚠️</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: '700', color: '#d97706', fontSize: '13px' }}>
-              {lowStockCount} product{lowStockCount !== 1 ? 's' : ''} running low on stock
+              {t('dash.lowStockItems')}: {num(lowStockCount)}
             </div>
             <div style={{ fontSize: '12px', color: '#92400e', marginTop: '2px' }}>
               {lowStockFilter
                 ? `Showing ${filtered.length} low stock product${filtered.length !== 1 ? 's' : ''} — click ✏️ Edit to update stock`
-                : 'Click "View Low Stock" to see which products need restocking'}
+                : t('products.emptyHint')}
             </div>
           </div>
           <button
@@ -366,7 +366,7 @@ export default function Products({ darkMode, toggleDark }) {
               fontWeight: '700', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0
             }}
           >
-            ⚠️ View Low Stock
+            {t('status.lowStock')}
           </button>
         </div>
       )}
@@ -380,16 +380,15 @@ export default function Products({ darkMode, toggleDark }) {
             <table className="table">
               <thead>
                 <tr>
-                  <th className="col-code col-hide-md">Image</th>
-                  <th className="col-name">Product</th>
-                  <th className="col-code col-hide-lg">SKU</th>
-                  <th className="col-code col-hide-xl">Barcode</th>
-                  <th className="col-hide-md">Category</th>
-                  <th className="col-num col-hide-lg">Cost</th>
-                  <th className="col-num">Price</th>
-                  <th className="col-num">Stock</th>
-                  <th className="col-status">Status</th>
-                  <th className="col-actions">Actions</th>
+                  <th className="col-code col-hide-md">{t('products.image')}</th>
+                  <th className="col-name">{t('products.productName')}</th>
+                  <th className="col-code col-hide-lg">{t('products.sku')}</th>
+                  <th className="col-code col-hide-xl">{t('products.barcode')}</th>
+                  <th className="col-hide-md">{t('products.category')}</th>
+                  <th className="col-num col-hide-lg">{t('products.costPrice')}</th>
+                  <th className="col-num">{t('products.sellPrice')}</th>
+                  <th className="col-num col-stock">{t('products.stock')}</th>
+                  <th className="col-actions">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -404,17 +403,11 @@ export default function Products({ darkMode, toggleDark }) {
                   const isLow = p.stock <= (p.lowStockAlert ?? 10);
                   const isOut = p.stock === 0;
                   return (
-                    <tr key={p.id} style={{
-                      background: isOut ? 'rgba(220,38,38,0.06)' : isLow ? 'rgba(245,158,11,0.06)' : 'inherit',
-                      borderLeft: isOut ? '3px solid #dc2626' : isLow ? '3px solid #f59e0b' : '3px solid transparent'
-                    }}>
+                    // Stock tint is a class, not an inline colour: it carries
+                    // status meaning, and status colour belongs in one place.
+                    <tr key={p.id} className={isOut ? 'row-out' : isLow ? 'row-low' : ''}>
                       <td className="col-hide-md">
-                        {p.image ? (
-                          <img src={fileUrl(p.image)} alt={p.name} style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border)' }} onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
-                        ) : null}
-                        <div style={{ width: '44px', height: '44px', borderRadius: '8px', background: 'var(--bg)', border: '1px solid var(--border)', display: p.image ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>
-                          {getCatEmoji(p.category?.name)}
-                        </div>
+                        <ProductAvatar product={p} size={44} />
                       </td>
                       <td className="col-name">
                         <div className="cell-title" style={{ fontWeight: '600' }}>{p.name}</div>
@@ -425,50 +418,42 @@ export default function Products({ darkMode, toggleDark }) {
                         </div>
                       </td>
                       <td className="col-code col-hide-lg">
-                        <span style={{ fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-secondary)' }}>{p.sku || '—'}</span>
+                        <span className="cell-code">{p.sku || '—'}</span>
                       </td>
                       <td className="col-code col-hide-xl">
                         {(p.barcode || p.sku) ? (
-                          <span style={{ fontFamily: 'monospace', fontSize: '11px', background: 'var(--bg)', padding: '2px 7px', borderRadius: '5px', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-                            {p.barcode || p.sku}
-                          </span>
+                          <span className="cell-code cell-code--boxed">{p.barcode || p.sku}</span>
                         ) : (
-                          <span style={{ color: '#dc2626', fontSize: '11px', fontWeight: '600' }}>⚠️ No barcode</span>
+                          <span className="cell-warn">{t('products.barcode')} —</span>
                         )}
                       </td>
-                      <td className="col-hide-md">{p.category ? <span className="badge badge-purple">{p.category.name}</span> : '—'}</td>
-                      <td className="col-num col-hide-lg">৳{fmt(p.cost)}</td>
-                      <td className="col-num" style={{ fontWeight: '700', color: 'var(--primary)' }}>৳{fmt(p.price)}</td>
-                      <td className="num">
-                        <div style={{ fontWeight: 700 }}>{p.stock} <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>{p.unit}</span></div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>alert at {p.lowStockAlert ?? 10}</div>
-                      </td>
-                      <td className="col-status">
+                      <td className="col-hide-md">{p.category ? <span className="ui-badge neutral">{p.category.name}</span> : '—'}</td>
+                      <td className="col-num col-hide-lg">{money(p.cost)}</td>
+                      <td className="col-num cell-price">{money(p.price)}</td>
+                      <td className="num col-stock">
+                        <div className="cell-stock">{num(p.stock)} <span className="cell-unit">{p.unit}</span></div>
                         <StockBadge stock={p.stock} lowStockAlert={p.lowStockAlert ?? 10} showCount={false} />
                       </td>
                       <td className="col-actions">
-                        <div className="row-actions">
+                        <div className="ui-actions">
+                          {/* Restock keeps a word: when stock is short it is the
+                              action someone is looking for, and an icon alone
+                              would make them hunt for it. */}
                           {isLow && (
-                            <button
-                              className="btn btn-sm"
-                              onClick={() => openAdjust(p)}
-                              title="Add stock"
-                              style={{
-                                background: isOut ? '#dc2626' : '#f59e0b', color: '#fff',
-                                border: 'none', fontWeight: 700, whiteSpace: 'nowrap',
-                              }}
-                            >
-                              📦 Restock
-                            </button>
+                            <Button size="sm" variant={isOut ? 'danger' : 'primary'}
+                                    onClick={() => openAdjust(p)}>
+                              {t('products.adjustStock')}
+                            </Button>
                           )}
-                          <button className="row-btn" onClick={() => openAdjust(p)} title="Adjust stock">⚖️</button>
-                          <button className="row-btn" onClick={() => openHistory(p)} title="Stock history">🧾</button>
-                          <button className="row-btn" onClick={() => openEdit(p)} title="Edit product">✏️</button>
+                          <IconButton icon={<Icon name="scale" />} size="sm" label={t('products.adjustStock')} onClick={() => openAdjust(p)} />
+                          <IconButton icon={<Icon name="receipt" />} size="sm" label={t('products.stockHistory')} onClick={() => openHistory(p)} />
+                          <IconButton icon={<Icon name="edit" />} size="sm" label={t('common.edit')} onClick={() => openEdit(p)} />
                           {(p.barcode || p.sku) && (
-                            <button className="row-btn" title="Print barcode labels"
-                                    onClick={() => { setPrintModal(p); setPrintQty(1); }}>🏷️</button>
+                            <IconButton icon={<Icon name="tag" />} size="sm" label={t('products.printLabels')}
+                                        onClick={() => { setPrintModal(p); setPrintQty(1); }} />
                           )}
-                          <button className="row-btn danger" onClick={() => handleDelete(p)} title="Archive product">🗑️</button>
+                          <IconButton icon={<Icon name="trash" />} size="sm" label={t('products.archiveProduct')} variant="danger"
+                                      onClick={() => handleDelete(p)} />
                         </div>
                       </td>
                     </tr>
@@ -933,7 +918,7 @@ export default function Products({ darkMode, toggleDark }) {
                 </div>
                 <canvas ref={printCanvasRef} style={{ maxWidth: '100%', background: '#fff' }} />
                 <div style={{ fontSize: '14px', fontWeight: '800', color: '#111', marginTop: '6px' }}>
-                  ৳{fmt(printModal.price)}
+                  {money(printModal.price)}
                 </div>
               </div>
               <div style={{ background: 'var(--bg)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', textAlign: 'center' }}>
