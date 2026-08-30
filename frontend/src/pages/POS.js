@@ -9,9 +9,12 @@ import { useT } from '../i18n';
 import Icon from '../components/Icon';
 import { Button, IconButton, ProductAvatar, EmptyState, useConfirm } from '../components/ui';
 import { scanOk, scanFail } from '../components/scanFeedback';
+import { printReceipt, saveReceiptWidth } from '../utils/receipt';
+import { useAuth } from '../context/AuthContext';
 
 export default function POS({ darkMode, toggleDark }) {
-  const { t, money, num } = useT();
+  const { t, money, num, lang } = useT();
+  const { user } = useAuth();
   const { ask: askConfirm, dialog: confirmDialog } = useConfirm();
   const [products, setProducts]         = useState([]);
   const [customers, setCustomers]       = useState([]);
@@ -167,6 +170,18 @@ export default function POS({ darkMode, toggleDark }) {
     return () => { window.removeEventListener('resize', fit); clearInterval(id); };
   }, [loading]);
 
+  /** Print the finished invoice at the chosen paper width. */
+  const doPrint = useCallback((width) => {
+    if (!invoiceModal) return;
+    saveReceiptWidth(width);
+    const ok = printReceipt(invoiceModal, {
+      width, t, money, lang,
+      tendered: invoiceModal._tendered,
+      cashier: user ? user.name : '',
+    });
+    if (!ok) toast.error(t('error.allowPopups'));
+  }, [invoiceModal, t, money, lang, user]);
+
   const focusScannerRef = useRef(null);
   const focusScanner = useCallback(() => {
     const el = scanInputRef.current;
@@ -266,7 +281,10 @@ export default function POS({ darkMode, toggleDark }) {
         paid: paidAmt,
         paymentMethod, note
       });
-      setInvoiceModal(res.data.data);
+      // `_tendered` is display-only and never sent anywhere: the server caps
+      // `paid` at the invoice total, so the record cannot say what was handed
+      // over, and without this the receipt could never show change.
+      setInvoiceModal({ ...res.data.data, _tendered: paidAmt });
       setCart([]); setDiscount(0); setPaid(''); setNote(''); setCustomerId('');
       fetchData();
       toast.success(t('pos.saleComplete'));
@@ -664,96 +682,13 @@ export default function POS({ darkMode, toggleDark }) {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-outline" onClick={() => {
-                const inv = invoiceModal;
-                // buildReceipt: generates thermal 80mm receipt HTML
-                const fmt80 = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n||0).toFixed(0));
-                const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<title>Receipt ${inv.invoiceNo}</title>
-<style>
-  /* ── Thermal 80mm receipt ── */
-  @page { size: 80mm auto; margin: 0; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    color: #000;
-    background: #fff;
-    width: 76mm;
-    padding: 3mm;
-  }
-  .center { text-align: center; }
-  .shop-name { font-size: 16px; font-weight: 900; letter-spacing: 1px; }
-  .divider { border-top: 1px dashed #000; margin: 5px 0; }
-  .divider-solid { border-top: 1px solid #000; margin: 5px 0; }
-  .row { display: flex; justify-content: space-between; margin: 2px 0; font-size: 11px; }
-  .label { color: #555; }
-  .bold { font-weight: 700; }
-  table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 11px; }
-  th { font-weight: 700; border-bottom: 1px solid #000; padding: 3px 2px; text-align: left; font-size: 10px; }
-  th:last-child, td:last-child { text-align: right; }
-  td { padding: 3px 2px; border-bottom: 1px dashed #ccc; }
-  .total-section { margin-top: 4px; }
-  .grand { font-size: 15px; font-weight: 900; }
-  .paid-full { text-align: center; font-weight: 900; font-size: 12px; margin: 4px 0; }
-  .due-box { border: 2px solid #000; padding: 4px 6px; margin: 4px 0; }
-  .footer-msg { text-align: center; font-size: 11px; margin-top: 6px; }
-  @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  }
-</style></head><body>
-
-<div class="center">
-  <div class="shop-name">DOMINGO SHOP</div>
-  <div style="font-size:10px;color:#444;">Dhaka, Bangladesh</div>
-  <div style="font-size:10px;margin-top:2px;">${inv.invoiceNo}</div>
-</div>
-
-<div class="divider"></div>
-<div class="row"><span class="label">Date</span><span>${new Date(inv.createdAt||Date.now()).toLocaleDateString('en-BD',{day:'2-digit',month:'short',year:'numeric'})}</span></div>
-<div class="row"><span class="label">Time</span><span>${new Date(inv.createdAt||Date.now()).toLocaleTimeString('en-BD',{hour:'2-digit',minute:'2-digit'})}</span></div>
-<div class="row"><span class="label">Customer</span><span>${inv.customer?.name||'Walk-in'}</span></div>
-<div class="row"><span class="label">Payment</span><span class="bold">${(inv.paymentMethod||'CASH').toUpperCase()}</span></div>
-
-<div class="divider"></div>
-<table>
-  <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
-  <tbody>
-    ${inv.items?.map(item=>`
-    <tr>
-      <td>${item.productName}</td>
-      <td style="text-align:center">${item.quantity}</td>
-      <td style="text-align:right">৳${fmt80(item.price)}</td>
-      <td style="text-align:right"><b>৳${fmt80(item.total)}</b></td>
-    </tr>`).join('')}
-  </tbody>
-</table>
-
-<div class="divider-solid"></div>
-<div class="total-section">
-  ${parseFloat(inv.discount)>0 ? `
-  <div class="row"><span>Subtotal</span><span>৳${fmt80(parseFloat(inv.total)+parseFloat(inv.discount))}</span></div>
-  <div class="row"><span>Discount</span><span>-৳${fmt80(inv.discount)}</span></div>
-  <div class="divider"></div>` : ''}
-  <div class="row grand"><span>TOTAL</span><span>৳${fmt80(inv.total)}</span></div>
-  <div class="row"><span>Paid</span><span class="bold">৳${fmt80(inv.paid)}</span></div>
-  ${parseFloat(inv.due)>0
-    ? `<div class="due-box row"><span>⚠ DUE</span><span class="bold">৳${fmt80(inv.due)}</span></div>`
-    : `<div class="paid-full">*** PAID IN FULL ***</div>`}
-</div>
-
-<div class="divider"></div>
-<div class="footer-msg">
-  Thank you for your purchase!<br/>
-  <span style="font-size:10px;color:#555;">Domingo Shop • Dhaka, Bangladesh</span>
-</div>
-
-<script>window.onload=()=>{window.print();window.close();}<' + '/script>
-</body></html>`;
-                const w = window.open('', '_blank', 'width=320,height=600');
-                w.document.write(html);
-                w.document.close();
-              }}>🖨️ Print Invoice</button>
+              {/* Two widths, because a shop runs one or the other and the
+                  layouts genuinely differ — see utils/receipt.js. The choice
+                  is remembered, so it is a one-time decision. */}
+              <Button variant="secondary" icon={<Icon name="print" />}
+                      onClick={() => doPrint(58)}>58mm</Button>
+              <Button variant="primary" icon={<Icon name="print" />}
+                      onClick={() => doPrint(80)}>80mm</Button>
               <Button variant="primary" onClick={() => setInvoiceModal(null)}>{t('pos.title')}</Button>
             </div>
           </div>
