@@ -488,13 +488,31 @@ select.form-control { cursor: pointer; }
 .search-input { padding-left: 36px !important; }
 
 /* ── POS ───────────────────────────────────────────────────────────────────── */
-.pos-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; height: calc(100vh - 170px); min-height: 560px; }
+.pos-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 16px;
+  /* No fixed height: the cart sticks instead (see .pos-cart), so the checkout
+     button cannot be pushed below the fold by a toolbar that wrapped. */
+  align-items: start;
+}
 .pos-products { display: flex; flex-direction: column; gap: 8px; min-width: 0; overflow: hidden; }
 /* The scrolling tile area. Kept as its own class so the mobile rules below can
    turn the inner scroller off and let the page scroll instead — a nested
    scroll region inside a phone-height column is unusable at the till. */
-.pos-product-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-.pos-cart { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow: hidden; }
+.pos-product-scroll { flex: 1; min-height: 0; }
+.pos-cart {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: sticky;
+  /* Clear of the header, which is 64px and does not scroll away. */
+  top: 16px;
+  /* Set from JS once the toolbar above has settled — see POS.js. The static
+     fallback keeps the layout sane before that runs and if JS is slow. */
+  max-height: var(--pos-cart-max, calc(100vh - 200px));
+  overflow: hidden;
+}
 
 /* Running total pinned to the bottom of the POS on phones. Desktop keeps the
    cart permanently in view beside the products, so it is hidden there. */
@@ -595,7 +613,10 @@ select.form-control { cursor: pointer; }
    RESPONSIVE — Tablet  ≤ 1024px
 ══════════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 1024px) {
-  .pos-layout { grid-template-columns: 1fr 320px; }
+  /* A tablet is the device this screen is actually used on, so the cart stays
+     beside the products — the total and the payment buttons must never be a
+     scroll away while items are being added. */
+  .pos-layout { grid-template-columns: minmax(0, 1fr) 300px; }
   .grid-responsive-5 { grid-template-columns: repeat(3, 1fr); }
 }
 
@@ -642,37 +663,6 @@ select.form-control { cursor: pointer; }
   /* POS — stack vertically on mobile.
      Both columns must drop their fixed height and inner scrollers, otherwise
      the tile area collapses to nothing inside an auto-height grid row. */
-  .pos-layout {
-    grid-template-columns: minmax(0, 1fr);
-    height: auto;
-    min-height: unset;
-  }
-  .pos-products       { overflow: visible; }
-  .pos-product-scroll { flex: none; min-height: 0; overflow-y: visible; }
-  .pos-cart           { position: static; height: auto; overflow: visible; }
-
-  .pos-mobile-cart-bar {
-    display: flex;
-    position: fixed;
-    left: 10px; right: 10px; bottom: 10px;
-    z-index: 60;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 13px 16px;
-    border: none;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: #fff;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
-  }
-  /* Room to scroll past the bar, so it never covers the checkout button. */
-  .pos-layout { padding-bottom: 64px; }
-
   /* Charts grid */
   .reports-charts-row  { grid-template-columns: 1fr !important; }
 
@@ -737,3 +727,42 @@ select.form-control { cursor: pointer; }
 
 .taka::before { content: '৳ '; }
 .font-mono    { font-family: var(--font-mono); }
+
+
+/* ── POS on a phone ─────────────────────────────────────────────────────────
+   Below 640px there is no room for two columns, so the layout stacks and the
+   running total moves into a bar pinned to the bottom of the screen. Above
+   this — including every tablet — the cart stays beside the products, because
+   a cashier adding items must be able to see the total without scrolling. */
+@media (max-width: 639px) {
+  .pos-layout {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: unset;
+    padding-bottom: 72px;   /* clear of the pinned bar */
+  }
+  .pos-products       { overflow: visible; }
+  .pos-product-scroll { flex: none; min-height: 0; overflow-y: visible; }
+  .pos-cart           { position: static; height: auto; overflow: visible; }
+
+  .pos-mobile-cart-bar {
+    display: flex;
+    position: fixed;
+    left: 10px; right: 10px; bottom: 10px;
+    z-index: 60;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: var(--tap-lg);
+    padding: 0 var(--space-4);
+    border: none;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+  }
+}
