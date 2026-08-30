@@ -385,3 +385,163 @@ kbd {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ═══ Primitives ═══════════════════════════════════════════════════════════
+   One button, one icon button, one avatar. Every page previously styled its
+   own inline, which is how 146 of 158 controls on /products ended up under
+   the 44px touch floor. */
+
+/* ── Button ──────────────────────────────────────────────────────────────── */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition),
+              color var(--transition), box-shadow var(--transition);
+}
+
+.ui-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Disabled must read as unavailable, not as a second style of button. */
+.ui-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.ui-btn--sm { min-height: 38px; padding: 0 var(--space-3); font-size: var(--text-xs); }
+.ui-btn--md { min-height: var(--tap); }
+.ui-btn--lg { min-height: var(--tap-lg); padding: 0 var(--space-6); font-size: var(--text-md); }
+.ui-btn--block { width: 100%; }
+
+.ui-btn--primary { background: var(--accent); color: var(--on-accent); }
+.ui-btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+.ui-btn--secondary {
+  background: var(--bg-card);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.ui-btn--secondary:hover:not(:disabled) { background: var(--bg-hover); }
+
+.ui-btn--danger { background: var(--danger); color: #fff; }
+.ui-btn--danger:hover:not(:disabled) { background: var(--danger-hover); }
+
+.ui-btn--ghost { background: transparent; color: var(--text-secondary); }
+.ui-btn--ghost:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+
+.ui-btn--outline { background: transparent; border-color: var(--border-strong); color: var(--text-secondary); }
+.ui-btn--outline:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+
+.ui-btn-icon { display: inline-flex; font-size: 1.05em; line-height: 1; }
+
+/* In-flight state. The button is disabled while this shows, which is what
+   stops a double-tap on a slow connection becoming a double sale. */
+.ui-btn-spinner {
+  width: 14px; height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ui-spin 0.6s linear infinite;
+}
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ui-btn-spinner { animation-duration: 2s; } }
+
+/* ── Icon button ─────────────────────────────────────────────────────────── */
+.ui-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.ui-iconbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ui-iconbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ui-iconbtn-icon { font-size: 1.15em; line-height: 1; }
+.ui-iconbtn.has-label { padding: 0 var(--space-3); }
+
+.ui-iconbtn--ghost:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+
+.ui-iconbtn--outline { border-color: var(--border); }
+.ui-iconbtn--outline:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Destructive actions must not look like Edit. Tinted at rest, solid on
+   hover, so the difference is visible before the click rather than after. */
+.ui-iconbtn--danger {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+.ui-iconbtn--danger:hover:not(:disabled) { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+.ui-iconbtn--sm { min-width: 38px; min-height: 38px; }
+
+/* ── Touch devices get the full 44px floor ────────────────────────────────
+   The compact size exists so a dense table is not all buttons on a desktop
+   with a mouse. On a finger — which is how this is used on a tablet at the
+   counter — there is no such thing as a secondary target, so every control
+   goes back up to the WCAG 2.5.5 floor. `pointer: coarse` is the right test:
+   it asks how the device is actually being pointed at, not how wide it is,
+   so a large tablet is treated as touch and a small window is not. */
+@media (pointer: coarse) {
+  .ui-btn--sm     { min-height: var(--tap); }
+  .ui-iconbtn--sm { min-width: var(--tap); min-height: var(--tap); }
+  .ui-iconbtn     { min-width: var(--tap); min-height: var(--tap); }
+}
+
+/* A row of actions stays on one line and scrolls rather than wrapping into
+   a ragged block that changes the row height. */
+.ui-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+}
+
+/* ── Product avatar ──────────────────────────────────────────────────────── */
+.ui-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  object-fit: cover;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+  user-select: none;
+  overflow: hidden;
+}
+
+.ui-avatar--generated { font-family: var(--font-sans); }
+
+/* ── Empty and error states ──────────────────────────────────────────────── */
+.ui-empty--error .ui-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
