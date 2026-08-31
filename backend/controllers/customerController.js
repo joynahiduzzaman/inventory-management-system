@@ -172,12 +172,21 @@ exports.collectDue = async (req, res) => {
     }
 
     // Sum from the invoices, not from customers.dueAmount. The invoices are the
-    // documents; the column is a cached total. Holding the customer lock means
-    // no new credit sale for this person can commit while we work, so this
-    // figure is stable — and it counts any invoice created between the two
-    // locks above, which is why an overpayment cannot slip through that gap.
+    // documents; the column is a cached total. This also counts any invoice
+    // created between the two locks above, so an overpayment cannot slip
+    // through that gap.
+    //
+    // FOR UPDATE is load-bearing, not decoration. A plain SELECT inside a
+    // transaction reads a snapshot, and on TiDB that snapshot is fixed when the
+    // transaction STARTS — so after this transaction has sat waiting on the row
+    // locks above, a plain read still returns the totals from before the
+    // transaction it just waited for. Measured: plain read 200.00, locking read
+    // 100.00, true value 100.00. MySQL happened to be safe here only because
+    // InnoDB establishes its consistent-read snapshot at the first NON-locking
+    // read, which lands after that wait; relying on that was fragile on both
+    // engines. A locking read sees the latest committed data on both.
     const [{ outstanding }] = await sequelize.query(
-      'SELECT COALESCE(SUM(due), 0) AS outstanding FROM sales WHERE customerId = :customerId',
+      'SELECT COALESCE(SUM(due), 0) AS outstanding FROM sales WHERE customerId = :customerId FOR UPDATE',
       { replacements: { customerId }, type: sequelize.QueryTypes.SELECT, transaction: t }
     );
     const owed = Math.round(parseFloat(outstanding || 0) * 100) / 100;
@@ -227,9 +236,10 @@ exports.collectDue = async (req, res) => {
     }
 
     // Recompute from the table rather than subtracting, so the cached total can
-    // never drift away from the documents behind it.
+    // never drift away from the documents behind it. Locking, for the same
+    // snapshot reason as above.
     const [{ balance }] = await sequelize.query(
-      'SELECT COALESCE(SUM(due), 0) AS balance FROM sales WHERE customerId = :customerId',
+      'SELECT COALESCE(SUM(due), 0) AS balance FROM sales WHERE customerId = :customerId FOR UPDATE',
       { replacements: { customerId }, type: sequelize.QueryTypes.SELECT, transaction: t }
     );
     const newBalance = Math.round(parseFloat(balance || 0) * 100) / 100;

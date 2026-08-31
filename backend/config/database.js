@@ -44,15 +44,28 @@ const common = {
   },
 
   pool: {
-    // Free managed tiers cap concurrent connections aggressively, and every
-    // warm serverless instance holds a pool of its own — so the ceiling that
-    // matters is (instances x max), not max. Three is enough for one shop's
-    // concurrency and leaves room for many instances under a ~20 connection cap.
+    // Three per instance, and the reason has changed with the database.
+    //
+    // On a capped provider (Aiven reported max_connections=76) the binding
+    // constraint was the ceiling: every warm serverless instance holds its own
+    // pool, so what matters is (instances x max), not max.
+    //
+    // TiDB Serverless reports max_connections=0 — no server-side cap — and
+    // accepted 40 concurrent connections from one client without complaint, so
+    // that ceiling is no longer what limits us. Three is kept anyway because a
+    // serverless function serves very little concurrency per instance, so a
+    // larger pool would be idle sockets rather than throughput.
+    //
+    // What DOES cost something on TiDB is opening a connection: measured at
+    // ~703ms cold against ~80ms for a query on an already-open one. Hence the
+    // longer idle window below — a warm instance should reuse its connection
+    // between invocations rather than pay that again. The server's own
+    // wait_timeout is 8 hours, so it will not drop them first.
     max: Number(process.env.DB_POOL_MAX) || (isProd ? 3 : 10),
     min: 0,
     acquire: 30000,
-    idle: 10000,
-    evict: 10000,
+    idle: 60000,
+    evict: 60000,
   },
 
   retry: {
