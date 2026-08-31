@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import { useT } from '../i18n';
 import { errorMessage } from '../utils/config';
-import { useConfirm } from '../components/ui';
+import { useConfirm, Button } from '../components/ui';
 
 const emptyForm = { name: '', description: '' };
 
 export default function Categories({ darkMode, toggleDark }) {
+  const { t } = useT();
   const confirm = useConfirm();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -127,7 +129,7 @@ export default function Categories({ darkMode, toggleDark }) {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : editItem ? 'Update' : 'Add Category'}</button>
+                <Button type="submit" variant="primary" loading={saving}>{editItem ? t('common.save') : t('categories.addCategory')}</Button>
               </div>
             </form>
           </div>

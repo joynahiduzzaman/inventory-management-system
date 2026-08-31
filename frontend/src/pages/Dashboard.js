@@ -7,12 +7,31 @@ import {
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import { useNavigate } from 'react-router-dom';
+import { useT } from '../i18n';
+import Icon from '../components/Icon';
+import { Kpi } from '../components/ui';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, Filler);
 
-const fmt = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0).toFixed(0));
+
+/** Read a design token so the charts follow the theme rather than carrying a
+ *  second, private palette. */
+/** Compact axis label: "03 Aug", with the month name following the language. */
+const BN_M = ['জানু','ফেব্রু','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্ট','অক্টো','নভে','ডিসে'];
+const chartLabelFor = (lang) => (d) => {
+  const dt = new Date(d);
+  const day = String(dt.getDate()).padStart(2, '0');
+  return lang === 'bn'
+    ? `${day} ${BN_M[dt.getMonth()]}`
+    : `${day} ${dt.toLocaleDateString('en-GB', { month: 'short' })}`;
+};
+
+const token = (name) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#0b7263';
 
 export default function Dashboard({ darkMode, toggleDark }) {
+  const { t, money, num, dateOnly, lang } = useT();
+  const chartLabel = chartLabelFor(lang);
   const [data, setData]               = useState(null);
   const [chartData, setChartData]     = useState(null);
   const [topProducts, setTopProducts] = useState([]);
@@ -58,27 +77,31 @@ export default function Dashboard({ darkMode, toggleDark }) {
   };
 
   const lineChartData = chartData && chartData.length > 0 ? {
-    labels: chartData.map(d => new Date(d.date).toLocaleDateString('en-BD', { month: 'short', day: 'numeric' })),
+    // Day and short month only. The full date needed rotating to fit and
+    // turned the axis into a wall of text on a 30-day range.
+    labels: chartData.map(d => chartLabel(d.date)),
     datasets: [{
-      label: 'Sales (৳)',
+      label: t('dash.revenue'),
       data: chartData.map(d => parseFloat(d?.total ?? 0)),
       fill: true,
-      borderColor: '#6366f1',
-      backgroundColor: 'rgba(99,102,241,0.08)',
-      tension: 0.4,
-      pointBackgroundColor: '#6366f1',
-      pointRadius: 4,
+      borderColor: token('--accent'),
+      backgroundColor: token('--accent-soft'),
+      tension: 0.35,
+      pointBackgroundColor: token('--accent'),
+      pointRadius: 3,
       pointHoverRadius: 6,
-      borderWidth: 2.5
+      borderWidth: 2
     }]
   } : null;
 
   const barData = topProducts.length ? {
     labels: topProducts.slice(0, 6).map(p => p.productName.substring(0, 15)),
     datasets: [{
-      label: 'Revenue (৳)',
+      label: t('dash.revenue'),
       data: topProducts.slice(0, 6).map(p => parseFloat(p.totalRevenue)),
-      backgroundColor: ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#8b5cf6'],
+      // One colour: these bars are six of the same thing. Six different
+      // colours implied a distinction that does not exist.
+      backgroundColor: token('--accent'),
       borderRadius: 6,
       borderSkipped: false
     }]
@@ -102,6 +125,12 @@ export default function Dashboard({ darkMode, toggleDark }) {
 
   // Flat shape from reportController v3 — no more dataValues nesting
   const todaySales   = parseFloat(data?.today?.revenue   ?? 0);
+  // What was actually taken at the counter today, as opposed to what was
+  // billed. Labelled "collected", never "drawer": there is no opening float
+  // to reconcile against, so calling it a drawer balance would be a claim the
+  // data cannot support.
+  const collectedToday = parseFloat(data?.today?.collected ?? 0);
+  const dueToday       = parseFloat(data?.today?.due ?? 0);
   const todayCount   = parseInt(data?.today?.count       ?? 0);
   const monthlySales = parseFloat(data?.month?.revenue   ?? 0);
   const monthlyCount = parseInt(data?.month?.count       ?? 0);
@@ -123,114 +152,82 @@ export default function Dashboard({ darkMode, toggleDark }) {
 
   return (
     <Layout
-      title="Dashboard"
-      subtitle={`Today: ${new Date().toLocaleDateString('en-BD', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`}
+      title={t('dash.title')}
+      subtitle={t('dash.today', { date: dateOnly(new Date()) })}
       darkMode={darkMode}
       toggleDark={toggleDark}
     >
-      {/* ── Stats Row 1 ─────────────────────────────────────────────────────── */}
-      <div className="stats-grid">
-        <div className="stat-card blue">
-          <div className="stat-icon blue">💳</div>
-          <div className="stat-value">৳{fmt(todaySales)}</div>
-          <div className="stat-label">Today's Sales</div>
-          <div className="stat-change">📊 {todayCount} transactions</div>
-        </div>
-        <div className="stat-card green">
-          <div className="stat-icon green">📅</div>
-          <div className="stat-value">৳{fmt(monthlySales)}</div>
-          <div className="stat-label">Monthly Sales</div>
-          <div className="stat-change">📊 {monthlyCount} orders</div>
-        </div>
-        <div className="stat-card amber">
-          <div className="stat-icon amber">💰</div>
-          <div className="stat-value" style={{ color: profit >= 0 ? '#16a34a' : '#dc2626' }}>
-            ৳{fmt(profit)}
-          </div>
-          <div className="stat-label">Net Profit (Month)</div>
-          <div className="stat-change">{profit >= 0 ? '📈 Profitable' : '📉 Loss'}</div>
-        </div>
-
-        {/* LOW STOCK — clickable card */}
-        <div
-          className="stat-card red"
-          onClick={lowCount > 0 ? openLowStock : undefined}
-          style={{ cursor: lowCount > 0 ? 'pointer' : 'default', position: 'relative' }}
-          title={lowCount > 0 ? 'Click to see which products are low on stock' : ''}
-        >
-          {lowCount > 0 && (
-            <span style={{
-              position: 'absolute', top: '12px', right: '12px',
-              fontSize: '10px', fontWeight: '700', color: '#dc2626',
-              background: '#fee2e2', border: '1px solid #fca5a5',
-              borderRadius: '6px', padding: '2px 8px'
-            }}>View →</span>
-          )}
-          <div className="stat-icon red">⚠️</div>
-          <div className="stat-value" style={{ color: lowCount > 0 ? '#dc2626' : '#16a34a' }}>
-            {lowCount}
-          </div>
-          <div className="stat-label">Low Stock Items</div>
-          <div className="stat-change">
-            {outCount > 0 ? `${outCount} already out of stock` : `of ${data?.inventory?.totalProducts ?? 0} products`}
-          </div>
-        </div>
+      {/* ── What gets checked first ───────────────────────────────────────────
+          Order is deliberate and comes from how a counter actually runs: how
+          did today go, how much cash came in, what am I about to run out of,
+          who owes me. Everything else is context and sits in the second row. */}
+      <div className="kpi-grid">
+        <Kpi
+          icon={<Icon name="cart" />}
+          value={money(todaySales)}
+          label={t('dash.todaySales')}
+          sub={t('dash.transactions', { count: num(todayCount) })}
+          emphasis
+        />
+        <Kpi
+          icon={<Icon name="money" />}
+          value={money(collectedToday)}
+          label={t('dash.cashCollected')}
+          sub={dueToday > 0 ? `${t('status.due')} ${money(dueToday)}` : t('status.paid')}
+          tone={dueToday > 0 ? 'warn' : 'neutral'}
+          emphasis
+        />
+        <Kpi
+          icon={<Icon name="warning" />}
+          value={num(lowCount)}
+          label={t('dash.lowStockItems')}
+          sub={outCount > 0
+            ? t('dash.alreadyOut', { count: num(outCount) })
+            : t('dash.productsOnShelf', { count: num(data?.inventory?.totalProducts ?? 0) })}
+          tone={outCount > 0 ? 'danger' : lowCount > 0 ? 'warn' : 'ok'}
+          onActivate={lowCount > 0 ? openLowStock : undefined}
+          actionLabel={t('dash.lowStockItems')}
+        />
+        <Kpi
+          icon={<Icon name="receipt" />}
+          value={money(owed)}
+          label={t('dash.owedByCustomers')}
+          sub={t('dash.unpaidInvoices', { count: num(owedCount) })}
+          tone={owed > 0 ? 'danger' : 'ok'}
+          onActivate={owedCount > 0 ? () => navigate('/sales') : undefined}
+          actionLabel={t('dash.owedByCustomers')}
+        />
       </div>
 
-      {/* ── Stats Row 2 ─────────────────────────────────────────────────────── */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', marginBottom: '24px' }}>
-        {/* Money owed to the shop — the figure that decides who gets chased today. */}
-        <div
-          className="stat-card red" role="button" tabIndex={0}
-          style={{ cursor: owedCount > 0 ? 'pointer' : 'default' }}
-          title={owedCount > 0 ? 'Open the unpaid invoices' : 'Nothing outstanding'}
-          onClick={() => owedCount > 0 && navigate('/sales')}
-          onKeyDown={(e) => e.key === 'Enter' && owedCount > 0 && navigate('/sales')}
-        >
-          <div className="stat-icon red">🧾</div>
-          <div className="stat-value" style={{ color: owed > 0 ? '#dc2626' : '#16a34a' }}>৳{fmt(owed)}</div>
-          <div className="stat-label">Owed by Customers</div>
-          <div className="stat-change">{owedCount} unpaid invoice{owedCount === 1 ? '' : 's'}</div>
-        </div>
-
-        {/* Out of stock is not the same problem as low stock: these cannot be sold at all. */}
-        <div
-          className="stat-card red" role="button" tabIndex={0}
-          style={{ cursor: outCount > 0 ? 'pointer' : 'default' }}
-          title={outCount > 0 ? 'See which products are out of stock' : 'Everything is in stock'}
-          onClick={() => outCount > 0 && navigate('/inventory')}
-          onKeyDown={(e) => e.key === 'Enter' && outCount > 0 && navigate('/inventory')}
-        >
-          <div className="stat-icon red">❌</div>
-          <div className="stat-value" style={{ color: outCount > 0 ? '#dc2626' : '#16a34a' }}>{outCount}</div>
-          <div className="stat-label">Out of Stock</div>
-          <div className="stat-change">{outCount > 0 ? 'Cannot be sold' : 'All products available'}</div>
-        </div>
-
-        <div className="stat-card green">
-          <div className="stat-icon green">🏪</div>
-          <div className="stat-value">৳{fmt(stockValue)}</div>
-          <div className="stat-label">Stock Value (Retail)</div>
-          <div className="stat-change">{data?.inventory?.totalProducts ?? 0} products on shelf</div>
-        </div>
-        <div className="stat-card amber">
-          <div className="stat-icon amber">💸</div>
-          <div className="stat-value">৳{fmt(monthlyExp)}</div>
-          <div className="stat-label">Monthly Expenses</div>
-          <div className="stat-change">Gross revenue ৳{fmt(revenue)}</div>
-        </div>
-        <div className="stat-card blue">
-          <div className="stat-icon blue">👥</div>
-          <div className="stat-value">{data?.inventory?.totalCustomers ?? 0}</div>
-          <div className="stat-label">Total Customers</div>
-        </div>
+      {/* ── Context ───────────────────────────────────────────────────────── */}
+      <div className="kpi-grid">
+        <Kpi icon={<Icon name="money" />} value={money(monthlySales)}
+             label={t('dash.monthSales')} sub={t('dash.orders', { count: num(monthlyCount) })} />
+        <Kpi icon={<Icon name="money" />} value={money(profit)}
+             label={t('dash.netProfit')}
+             sub={profit >= 0 ? t('dash.profitable') : t('dash.loss')}
+             tone={profit < 0 ? 'danger' : 'neutral'} />
+        <Kpi icon={<Icon name="box" />} value={money(stockValue)}
+             label={t('dash.stockValue')}
+             sub={t('dash.productsOnShelf', { count: num(data?.inventory?.totalProducts ?? 0) })} />
+        <Kpi icon={<Icon name="close" />} value={num(outCount)}
+             label={t('dash.outOfStock')}
+             sub={outCount > 0 ? t('dash.cannotBeSold') : t('status.inStock')}
+             tone={outCount > 0 ? 'danger' : 'ok'}
+             onActivate={outCount > 0 ? () => navigate('/inventory') : undefined}
+             actionLabel={t('dash.outOfStock')} />
+        <Kpi icon={<Icon name="tag" />} value={money(monthlyExp)}
+             label={t('dash.monthExpenses')}
+             sub={t('dash.grossRevenue', { amount: money(revenue) })} />
+        <Kpi icon={<Icon name="user" />} value={num(data?.inventory?.totalCustomers ?? 0)}
+             label={t('dash.totalCustomers')} />
       </div>
 
       {/* ── Charts ──────────────────────────────────────────────────────────── */}
       <div className="reports-charts-row" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginBottom: '24px' }}>
         <div className="card">
           <div className="card-header">
-            <div className="card-title">📈 Sales Trend (Last 30 Days)</div>
+            <div className="card-title">{t('dash.salesTrend')}</div>
           </div>
           <div style={{ padding: '20px', height: '260px' }}>
             {lineChartData
@@ -241,7 +238,7 @@ export default function Dashboard({ darkMode, toggleDark }) {
         </div>
         <div className="card">
           <div className="card-header">
-            <div className="card-title">🏆 Top Products</div>
+            <div className="card-title">{t('dash.topProducts')}</div>
           </div>
           <div style={{ padding: '20px', height: '260px' }}>
             {barData
@@ -256,12 +253,12 @@ export default function Dashboard({ darkMode, toggleDark }) {
       {topProducts.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <div className="card-title">📊 Top Selling Products</div>
+            <div className="card-title">{t('dash.topSelling')}</div>
           </div>
           <div className="table-wrapper">
             <table className="table">
               <thead>
-                <tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr>
+                <tr><th>#</th><th>{t('products.productName')}</th><th>{t('dash.qtySold')}</th><th>{t('dash.revenue')}</th></tr>
               </thead>
               <tbody>
                 {topProducts.slice(0, 8).map((p, i) => (
@@ -269,7 +266,7 @@ export default function Dashboard({ darkMode, toggleDark }) {
                     <td>
                       <span style={{
                         width: '24px', height: '24px',
-                        background: i < 3 ? '#6366f1' : '#f1f5f9',
+                        background: i < 3 ? 'var(--accent)' : 'var(--bg-subtle)',
                         color: i < 3 ? '#fff' : '#64748b',
                         borderRadius: '50%', display: 'inline-flex',
                         alignItems: 'center', justifyContent: 'center',
@@ -278,7 +275,7 @@ export default function Dashboard({ darkMode, toggleDark }) {
                     </td>
                     <td style={{ fontWeight: '600' }}>{p.productName}</td>
                     <td>{p.totalQty} units</td>
-                    <td style={{ fontWeight: '700', color: '#6366f1' }}>৳{fmt(p.totalRevenue)}</td>
+                    <td className="cell-price">{money(p.totalRevenue)}</td>
                   </tr>
                 ))}
               </tbody>

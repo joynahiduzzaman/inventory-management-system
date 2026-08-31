@@ -2,11 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import { useT } from '../i18n';
+import { Button } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 
 const emptyForm = { name: '', email: '', password: '', role: 'staff' };
 
 export default function Users({ darkMode, toggleDark }) {
+  const { t } = useT();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -158,7 +161,7 @@ export default function Users({ darkMode, toggleDark }) {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : editItem ? 'Update User' : 'Create User'}</button>
+                <Button type="submit" variant="primary" loading={saving}>{editItem ? t('common.save') : t('users.addUser')}</Button>
               </div>
             </form>
           </div>

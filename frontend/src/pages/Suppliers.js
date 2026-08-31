@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import { useT } from '../i18n';
 import { errorMessage } from '../utils/config';
-import { useConfirm } from '../components/ui';
+import { useConfirm, Button } from '../components/ui';
 
 const emptyForm = { name: '', phone: '', email: '', company: '', address: '' };
 
 export default function Suppliers({ darkMode, toggleDark }) {
+  const { t } = useT();
   const confirm = useConfirm();
   const [suppliers, setSuppliers]     = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -235,7 +237,7 @@ export default function Suppliers({ darkMode, toggleDark }) {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : editItem ? 'Update' : 'Add Supplier'}</button>
+                <Button type="submit" variant="primary" loading={saving}>{editItem ? t('common.save') : t('suppliers.addSupplier')}</Button>
               </div>
             </form>
           </div>

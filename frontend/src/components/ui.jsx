@@ -162,6 +162,44 @@ export function ProductAvatar({ product, size = 44, rounded = 'var(--radius-sm)'
   );
 }
 
+/* ── KPI tile ─────────────────────────────────────────────────────────────── */
+/**
+ * One figure, stated once.
+ *
+ * The dashboard used six `stat-card` colour variants — blue, green, amber, red
+ * — assigned by taste rather than meaning, so a green "Monthly Sales" sat
+ * beside a green "Stock Value" and a red "Out of Stock", and the red was the
+ * only one that meant anything. Colour here is a `tone`, and a tone is only
+ * ever set from the data: `danger` when something cannot be sold or is owed,
+ * `warn` when it needs attention this week, `ok` when a number that is usually
+ * a problem currently is not. Everything else is neutral, which is most of it.
+ *
+ * `onActivate` makes the whole tile a button — the low-stock and dues figures
+ * are questions ("which ones?"), and the answer should be one tap away.
+ */
+export function Kpi({
+  icon, value, label, sub, tone = 'neutral', onActivate, actionLabel, emphasis = false,
+}) {
+  const inner = (
+    <>
+      <span className={`kpi-icon tone-${tone}`} aria-hidden="true">{icon}</span>
+      <span className={`kpi-value${emphasis ? ' is-emphasis' : ''} tone-${tone}`}>{value}</span>
+      <span className="kpi-label">{label}</span>
+      {sub && <span className="kpi-sub">{sub}</span>}
+    </>
+  );
+
+  if (!onActivate) return <div className={`kpi tone-${tone}`}>{inner}</div>;
+
+  return (
+    <button type="button" className={`kpi tone-${tone} is-clickable`} onClick={onActivate}
+            aria-label={actionLabel || `${label}: ${value}`}>
+      {inner}
+      <span className="kpi-go" aria-hidden="true">→</span>
+    </button>
+  );
+}
+
 /* ── Confirm dialog ───────────────────────────────────────────────────────── */
 /**
  * Replaces window.confirm for destructive actions.

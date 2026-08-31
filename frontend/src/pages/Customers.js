@@ -196,7 +196,7 @@ export default function Customers({ darkMode, toggleDark }) {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : editItem ? 'Update' : 'Add Customer'}</button>
+                <Button type="submit" variant="primary" loading={saving}>{editItem ? t('common.save') : t('customers.addCustomer')}</Button>
               </div>
             </form>
           </div>

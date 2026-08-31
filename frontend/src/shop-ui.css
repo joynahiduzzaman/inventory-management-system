@@ -956,3 +956,75 @@ kbd {
   border-top: 1px solid var(--border);
   color: var(--text-muted); font-size: var(--text-xs); text-align: center; line-height: var(--leading-normal);
 }
+
+/* ── KPI tiles ──────────────────────────────────────────────────────────────
+   Colour is status, never decoration. A neutral tile is the default and the
+   majority; a tinted one is telling you something needs doing. */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.kpi {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  text-align: left;
+}
+
+.kpi.is-clickable {
+  cursor: pointer;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.kpi.is-clickable:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.kpi.is-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.kpi-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px; height: 34px;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+}
+
+.kpi-value {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.15;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.kpi-value.is-emphasis { font-size: var(--text-3xl); }
+
+.kpi-label { font-size: var(--text-sm); color: var(--text-secondary); font-weight: var(--weight-medium); }
+.kpi-sub   { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--text-muted); }
+
+.kpi-go {
+  position: absolute; top: var(--space-3); right: var(--space-3);
+  color: var(--text-muted); font-size: var(--text-sm);
+}
+.kpi.is-clickable:hover .kpi-go { color: var(--accent); }
+
+/* Tones. Only these three tint anything. */
+.kpi.tone-danger { border-color: var(--danger-border); background: var(--danger-soft); }
+.kpi.tone-warn   { border-color: var(--warn-border);   background: var(--warn-soft); }
+
+.kpi-icon.tone-danger { background: var(--danger); color: #fff; }
+.kpi-icon.tone-warn   { background: var(--warn);   color: #fff; }
+.kpi-icon.tone-ok     { background: var(--ok-soft); color: var(--ok); }
+
+.kpi-value.tone-danger { color: var(--danger); }
+.kpi-value.tone-warn   { color: var(--warn); }
+.kpi-value.tone-ok     { color: var(--ok); }
