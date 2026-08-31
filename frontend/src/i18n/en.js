@@ -295,6 +295,21 @@ const en = {
   'customers.empty': 'No customers yet',
   'customers.emptyHint': 'Add a customer to track credit sales',
 
+  'due.takePayment': 'Take payment',
+  'due.title': 'Payment from {name}',
+  'due.outstanding': 'Outstanding balance',
+  'due.amountToTake': 'Amount received',
+  'due.willSettle': 'This settles:',
+  'due.settlesInvoice': '{invoice} — {amount}',
+  'due.settlesPartly': '{invoice} — {amount} (part payment)',
+  'due.remainingAfter': 'Remaining after this: {amount}',
+  'due.payAll': 'Pay all',
+  'due.noInvoices': 'Nothing outstanding for this customer.',
+  'due.oldestFirst': 'Applied to the oldest unpaid bill first.',
+  'due.tooMuch': 'That is more than {name} owes.',
+  'due.collected': '{amount} received from {name}',
+  'due.invoiceDate': 'Bill date',
+
   // ── Misc pages ─────────────────────────────────────────────────────────
   'suppliers.title': 'Suppliers',
   'suppliers.subtitle': '{count} suppliers',

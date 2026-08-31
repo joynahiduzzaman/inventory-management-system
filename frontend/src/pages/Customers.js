@@ -6,6 +6,7 @@ import { errorMessage } from '../utils/config';
 import { useT } from '../i18n';
 import Icon from '../components/Icon';
 import { useConfirm, Button, IconButton } from '../components/ui';
+import CollectDueModal from '../components/CollectDueModal';
 
 const emptyForm = { name: '', phone: '', email: '', address: '' };
 
@@ -19,6 +20,7 @@ export default function Customers({ darkMode, toggleDark }) {
   const [editItem, setEditItem] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [dueModal, setDueModal] = useState(null);
   const [detailModal, setDetailModal] = useState(null);
   const [detailData, setDetailData] = useState(null);
 
@@ -149,6 +151,10 @@ export default function Customers({ darkMode, toggleDark }) {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '6px' }}>
+                        {parseFloat(c.dueAmount) > 0 && (
+                          <Button size="sm" variant="primary" icon={<Icon name="money" />}
+                                  onClick={() => setDueModal(c)}>{t('due.takePayment')}</Button>
+                        )}
                         <Button size="sm" variant="secondary" icon={<Icon name="receipt" />}
                                 onClick={() => openDetail(c)}>{t('common.history')}</Button>
                         <IconButton size="sm" icon={<Icon name="edit" />} label={t('common.edit')}
@@ -256,6 +262,13 @@ export default function Customers({ darkMode, toggleDark }) {
         </div>
       )}
       {confirm.dialog}
+      {dueModal && (
+        <CollectDueModal
+          customer={dueModal}
+          onClose={() => setDueModal(null)}
+          onDone={() => { setDueModal(null); loadData(); }}
+        />
+      )}
     </Layout>
   );
 }

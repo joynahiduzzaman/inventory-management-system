@@ -234,12 +234,125 @@ function check(name, cond, detail) {
   r = await call('POST', '/sales', { items: [{ productId: PID, quantity: 3 }, { productId: PID, quantity: 4 }], paid: 0 });
   check('duplicate cart lines merged for stock check (3+4 > 5 rejected)', r.status >= 400, 'status=' + r.status + ' ' + String(r.d && r.d.message).slice(0, 60));
 
+  // ---------- CUSTOMER-LEVEL DUE PAYMENT ----------
+  // Credit here is tracked per person, not per invoice: a shopkeeper taking
+  // money off a balance is not thinking about which document it lands on.
+  // These cover the allocation, the arithmetic, the refusal, and the case
+  // where two payments arrive at once.
+  await call('POST', '/products/' + PID + '/adjust-stock', { mode: 'set', quantity: 100, type: 'correction' });
+
+  r = await call('POST', '/customers', { name: 'AUDIT Debtor ' + Date.now(), phone: '01700000009' });
+  const DEBTOR = r.d && r.d.data && r.d.data.id;
+  check('created a customer to owe money', r.status === 201 && !!DEBTOR);
+
+  // Three credit sales, oldest first: 100, 200, 300 all unpaid.
+  const dueInvoices = [];
+  for (const qty of [1, 2, 3]) {
+    const sale = await call('POST', '/sales', {
+      customerId: DEBTOR,
+      items: [{ productId: PID, quantity: qty }],
+      paid: 0,
+    });
+    if (sale.status === 201) dueInvoices.push(sale.d.data);
+    // Separate the timestamps so "oldest first" is unambiguous.
+    await new Promise((res) => setTimeout(res, 1100));
+  }
+  const owedTotal = Math.round(dueInvoices.reduce((a, i) => a + parseFloat(i.due), 0) * 100) / 100;
+  check('three credit sales recorded', dueInvoices.length === 3 && owedTotal > 0, 'owed=' + owedTotal);
+
+  r = await call('GET', '/customers/' + DEBTOR + '/due');
+  check('GET /customers/:id/due lists the unpaid invoices',
+        r.status === 200 && r.d.data.invoices.length === 3, 'n=' + (r.d && r.d.data && r.d.data.invoices.length));
+  check('  outstanding matches the sum of the invoices',
+        Math.abs(r.d.data.outstanding - owedTotal) < 0.01,
+        'outstanding=' + (r.d && r.d.data && r.d.data.outstanding) + ' expected=' + owedTotal);
+  check('  cached customer balance agrees with the invoices',
+        Math.abs(r.d.data.cachedBalance - owedTotal) < 0.01,
+        'cached=' + (r.d && r.d.data && r.d.data.cachedBalance));
+
+  // Overpayment is refused rather than absorbed.
+  r = await call('POST', '/customers/' + DEBTOR + '/collect-due', { amount: owedTotal + 1 });
+  check('overpayment is rejected with a clear message',
+        r.status === 400 && /more than the outstanding/i.test(String(r.d && r.d.message)),
+        'status=' + r.status + ' ' + String(r.d && r.d.message).slice(0, 70));
+
+  r = await call('POST', '/customers/' + DEBTOR + '/collect-due', { amount: 0 });
+  check('zero payment is rejected', r.status === 400);
+  r = await call('POST', '/customers/' + DEBTOR + '/collect-due', { amount: -50 });
+  check('negative payment is rejected', r.status === 400);
+
+  // Pay enough to clear the first invoice and part of the second.
+  const firstDue = parseFloat(dueInvoices[0].due);
+  const partial = Math.round((firstDue + 1) * 100) / 100;
+  r = await call('POST', '/customers/' + DEBTOR + '/collect-due', { amount: partial });
+  const alloc = (r.d && r.d.data) || {};
+  check('partial payment allocates oldest-first',
+        r.status === 200 && alloc.allocations && alloc.allocations[0].invoiceNo === dueInvoices[0].invoiceNo,
+        'first=' + (alloc.allocations && alloc.allocations[0] && alloc.allocations[0].invoiceNo));
+  check('  the oldest invoice is settled in full',
+        alloc.allocations && alloc.allocations[0].settled === true && alloc.allocations[0].remainingOnInvoice === 0);
+  check('  the next invoice is settled only in part',
+        alloc.allocations && alloc.allocations.length === 2 &&
+        alloc.allocations[1].settled === false && alloc.allocations[1].applied === 1,
+        'second applied=' + (alloc.allocations && alloc.allocations[1] && alloc.allocations[1].applied));
+  check('  new balance is previous minus the payment',
+        Math.abs(alloc.newBalance - (owedTotal - partial)) < 0.01,
+        'newBalance=' + alloc.newBalance + ' expected=' + Math.round((owedTotal - partial) * 100) / 100);
+
+  // The ledger has to reconcile: the cached total equals the sum of invoices.
+  r = await call('GET', '/customers/' + DEBTOR + '/due');
+  check('  customer balance still equals the sum of unpaid invoices',
+        Math.abs(r.d.data.outstanding - r.d.data.cachedBalance) < 0.01,
+        'invoices=' + r.d.data.outstanding + ' cached=' + r.d.data.cachedBalance);
+
+  // The per-invoice endpoint must keep working — it is not replaced.
+  const stillOwing = r.d.data.invoices[0];
+  r = await call('PATCH', '/sales/' + stillOwing.id + '/collect-due', { amount: 1 });
+  check('per-invoice collect-due still works', r.status === 200, 'status=' + r.status);
+
+  // CONCURRENCY: two payments for the same customer at the same instant.
+  // Neither may be lost, and the balance must not end up disagreeing with the
+  // invoices behind it.
+  r = await call('GET', '/customers/' + DEBTOR + '/due');
+  const beforeConc = r.d.data.outstanding;
+  const half = Math.round((beforeConc / 2) * 100) / 100;
+  const pair = await Promise.all([
+    call('POST', '/customers/' + DEBTOR + '/collect-due', { amount: half }),
+    call('POST', '/customers/' + DEBTOR + '/collect-due', { amount: half }),
+  ]);
+  const okPays = pair.filter((x) => x.status === 200).length;
+  r = await call('GET', '/customers/' + DEBTOR + '/due');
+  const afterConc = r.d.data.outstanding;
+  const expected = Math.round((beforeConc - half * okPays) * 100) / 100;
+  check('concurrent payments do not corrupt the balance',
+        okPays >= 1 && Math.abs(afterConc - expected) < 0.01,
+        'accepted=' + okPays + ' before=' + beforeConc + ' after=' + afterConc + ' expected=' + expected);
+  check('  and the cached total still matches the invoices',
+        Math.abs(r.d.data.outstanding - r.d.data.cachedBalance) < 0.01,
+        'invoices=' + r.d.data.outstanding + ' cached=' + r.d.data.cachedBalance);
+
+  // Paying off the rest clears the customer entirely.
+  if (afterConc > 0) {
+    r = await call('POST', '/customers/' + DEBTOR + '/collect-due', { amount: afterConc });
+    check('final payment clears the balance', r.status === 200 && r.d.data.newBalance === 0,
+          'newBalance=' + (r.d && r.d.data && r.d.data.newBalance));
+  }
+  r = await call('POST', '/customers/' + DEBTOR + '/collect-due', { amount: 10 });
+  check('paying a customer who owes nothing is rejected', r.status === 400,
+        'status=' + r.status + ' ' + String(r.d && r.d.message).slice(0, 50));
+
+  r = await call('POST', '/customers/999999/collect-due', { amount: 10 });
+  check('payment against an unknown customer is a 404', r.status === 404, 'status=' + r.status);
+
   // ---------- CLEAN UP WHAT THIS RUN CREATED ----------
   // The suite is meant to be safe to run against a database holding real shop
   // data, which means it has to remove its own fixtures too — not just archive
   // the product. force=true uncategorises rather than deletes any product still
   // pointing at a test category, so nothing real is destroyed.
   await call('DELETE', '/products/' + PID).catch(() => {});
+  if (typeof DEBTOR !== 'undefined' && DEBTOR) {
+    await call('DELETE', '/customers/' + DEBTOR).catch(() => {});
+  }
   for (const id of createdCategories) {
     await call('DELETE', '/categories/' + id + '?force=true').catch(() => {});
   }

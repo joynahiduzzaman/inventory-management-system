@@ -297,6 +297,21 @@ const bn = {
   'customers.empty': 'এখনো কোনো গ্রাহক নেই',
   'customers.emptyHint': 'বাকিতে বিক্রির হিসাব রাখতে গ্রাহক যোগ করুন',
 
+  'due.takePayment': 'টাকা নিন',
+  'due.title': '{name} এর কাছ থেকে টাকা',
+  'due.outstanding': 'মোট বাকি',
+  'due.amountToTake': 'জমা নেওয়া টাকা',
+  'due.willSettle': 'যেসব বিল পরিশোধ হবে:',
+  'due.settlesInvoice': '{invoice} — {amount}',
+  'due.settlesPartly': '{invoice} — {amount} (আংশিক)',
+  'due.remainingAfter': 'এরপর বাকি থাকবে: {amount}',
+  'due.payAll': 'পুরোটা',
+  'due.noInvoices': 'এই গ্রাহকের কোনো বাকি নেই।',
+  'due.oldestFirst': 'সবচেয়ে পুরনো বিল থেকে ধরা হবে।',
+  'due.tooMuch': '{name} এর বাকির চেয়ে এটি বেশি।',
+  'due.collected': '{name} এর কাছ থেকে {amount} জমা হয়েছে',
+  'due.invoiceDate': 'বিলের তারিখ',
+
   // ── Misc pages ─────────────────────────────────────────────────────────
   'suppliers.title': 'সরবরাহকারী',
   'suppliers.subtitle': '{count} জন সরবরাহকারী',

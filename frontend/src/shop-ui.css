@@ -1028,3 +1028,44 @@ kbd {
 .kpi-value.tone-danger { color: var(--danger); }
 .kpi-value.tone-warn   { color: var(--warn); }
 .kpi-value.tone-ok     { color: var(--ok); }
+
+/* ── Collect due ────────────────────────────────────────────────────────── */
+.due-summary {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius);
+}
+.due-summary-label { font-size: var(--text-sm); color: var(--text-secondary); font-weight: var(--weight-medium); }
+.due-summary-value { font-size: var(--text-xl); font-weight: var(--weight-bold); color: var(--danger); }
+
+.due-input-row { display: flex; gap: var(--space-2); align-items: stretch; }
+.due-input-row .form-control { flex: 1; font-size: var(--text-md); font-weight: var(--weight-bold); text-align: right; }
+
+.due-warn { margin-top: var(--space-2); font-size: var(--text-sm); font-weight: var(--weight-semi); color: var(--danger); }
+.due-hint { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--text-muted); }
+
+/* What the money will actually settle — shown before committing, so the
+   allocation is never a surprise after the fact. */
+.due-preview {
+  margin-top: var(--space-4); padding: var(--space-3);
+  background: var(--ok-soft); border: 1px solid var(--ok-border); border-radius: var(--radius);
+}
+.due-preview-title { font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--ok); margin-bottom: var(--space-2); }
+.due-preview-row, .due-list-row {
+  display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-3);
+  align-items: center; padding: var(--space-1) 0;
+}
+.due-settled { font-weight: var(--weight-bold); color: var(--ok); white-space: nowrap; }
+.due-partial { font-weight: var(--weight-bold); color: var(--warn); white-space: nowrap; }
+.due-remaining {
+  margin-top: var(--space-2); padding-top: var(--space-2);
+  border-top: 1px dashed var(--ok-border);
+  font-size: var(--text-sm); font-weight: var(--weight-semi); color: var(--text-secondary);
+}
+
+.due-list { margin-top: var(--space-4); border-top: 1px solid var(--border); padding-top: var(--space-2); }
+.due-list-row { border-bottom: 1px solid var(--border); }
+.due-list-row:last-child { border-bottom: none; }
