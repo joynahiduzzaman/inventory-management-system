@@ -618,7 +618,13 @@ select.form-control { cursor: pointer; }
   /* A tablet is the device this screen is actually used on, so the cart stays
      beside the products — the total and the payment buttons must never be a
      scroll away while items are being added. */
-  .pos-layout { grid-template-columns: minmax(0, 1fr) clamp(300px, 38%, 380px); }
+  /* 340px is not a taste decision, it is arithmetic. A one-line cart row on a
+     touch device needs name(60) + minus(44) + qty(32) + plus(44) + total(50)
+     + remove(44) + gaps(25) = 299px of inner width, and the panel adds 24px of
+     padding. At the previous 300px minimum the row was ~50px too wide, so the
+     remove button was pushed outside the panel and the panel's overflow:hidden
+     cut it off — a cashier could not delete a line at all. */
+  .pos-layout { grid-template-columns: minmax(0, 1fr) clamp(340px, 42%, 400px); }
   .grid-responsive-5 { grid-template-columns: repeat(3, 1fr); }
 }
 

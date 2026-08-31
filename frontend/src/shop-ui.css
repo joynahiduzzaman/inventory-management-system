@@ -688,6 +688,9 @@ kbd {
   font-family: var(--font-sans);
   text-align: left;
   cursor: pointer;
+  /* Belt and braces: whatever the contents do, a tile never spills into the
+     grid around it. */
+  overflow: hidden;
   transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
 }
 
@@ -698,7 +701,8 @@ kbd {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--space-2);
+  gap: var(--space-1);
+  min-width: 0;
   margin-top: 1px;
 }
 
@@ -717,8 +721,11 @@ kbd {
 
 .pos-tile-qty {
   position: absolute;
-  top: -7px; right: -7px;
-  min-width: 21px; height: 21px;
+  /* Inside the tile, not hanging off it. Sitting at -7px meant the badge on a
+     right-hand tile poked past the products column, which then clipped it —
+     and it fought the tile's own overflow guard. */
+  top: 3px; right: 3px;
+  min-width: 19px; height: 19px;
   display: flex; align-items: center; justify-content: center;
   padding: 0 5px;
   border-radius: var(--radius-full);
@@ -729,6 +736,8 @@ kbd {
 }
 
 .pos-tile-name {
+  /* Room for the count badge in the top-right corner. */
+  padding-right: 20px;
   font-size: var(--text-sm);
   font-weight: var(--weight-semi);
   line-height: 1.2;
@@ -744,18 +753,28 @@ kbd {
 }
 
 .pos-tile-price {
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: var(--text-base);
   font-weight: var(--weight-bold);
   color: var(--text-primary);
   line-height: 1.1;
+  white-space: nowrap;
 }
 
-/* Stock is a number beside the price, not a sentence on its own line. */
+/* Stock is a number beside the price, not a sentence on its own line.
+   It must be allowed to SHRINK: with flex:none the out-of-stock wording
+   ("স্টক শেষ") could not give way on a narrow tile, so price plus label
+   exceeded the tile, spilled into the products column, and the column's
+   overflow:hidden cut it — silently, without ever growing scrollWidth. */
 .pos-tile-stock {
+  min-width: 0;
+  flex: 0 1 auto;
   font-size: var(--text-xs);
   color: var(--text-muted);
   white-space: nowrap;
-  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .pos-tile-stock.is-low { color: var(--warn); font-weight: var(--weight-semi); }
 .pos-tile-stock.is-out { color: var(--danger); font-weight: var(--weight-semi); }

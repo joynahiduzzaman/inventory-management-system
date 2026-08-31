@@ -519,7 +519,7 @@ export default function POS({ darkMode, toggleDark }) {
                         remove control keep a full 44x44 target. */}
                     {item.quantity > 1 && (
                       <IconButton size="sm" variant="outline" icon={<Icon name="minus" size={15} />}
-                                  label={t('common.previous')}
+                                  label={t('pos.decreaseQty')}
                                   onClick={() => updateQty(item.productId, item.quantity - 1)} />
                     )}
                     <input type="number" value={item.quantity} min="1" max={item.stock}
@@ -527,7 +527,7 @@ export default function POS({ darkMode, toggleDark }) {
                            onChange={e => updateQty(item.productId, parseInt(e.target.value) || 1)}
                            className="pos-qty-input" />
                     <IconButton size="sm" variant="outline" icon={<Icon name="plus" size={15} />}
-                                label={t('common.add')}
+                                label={t('pos.increaseQty')}
                                 onClick={() => updateQty(item.productId, item.quantity + 1)} />
                   </div>
                   <span className="pos-line-total">{money(item.total)}</span>

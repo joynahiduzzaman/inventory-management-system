@@ -173,6 +173,8 @@ const en = {
   'pos.eachPrice': '{amount} each',
   'pos.inCart': 'In cart',
   'pos.addToCart': 'Add',
+  'pos.decreaseQty': 'Decrease quantity',
+  'pos.increaseQty': 'Increase quantity',
   'pos.stockLeft': 'Stock: {count}',
   'pos.shortcuts': 'Shortcuts',
   'pos.shortcutScan': 'Focus scanner',

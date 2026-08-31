@@ -175,6 +175,8 @@ const bn = {
   'pos.eachPrice': 'প্রতিটি {amount}',
   'pos.inCart': 'কার্টে আছে',
   'pos.addToCart': 'যোগ',
+  'pos.decreaseQty': 'পরিমাণ কমান',
+  'pos.increaseQty': 'পরিমাণ বাড়ান',
   'pos.stockLeft': 'স্টক: {count}',
   'pos.shortcuts': 'শর্টকাট',
   'pos.shortcutScan': 'স্ক্যানারে যান',
