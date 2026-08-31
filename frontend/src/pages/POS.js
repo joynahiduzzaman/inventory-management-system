@@ -30,6 +30,7 @@ export default function POS({ darkMode, toggleDark }) {
   const [discount, setDiscount]         = useState(0);
   const [paid, setPaid]                 = useState('');
   const [note, setNote]                 = useState('');
+  const [noteOpen, setNoteOpen]         = useState(false);
   const [loading, setLoading]           = useState(true);
   const [processing, setProcessing]     = useState(false);
   const [invoiceModal, setInvoiceModal] = useState(null);
@@ -245,7 +246,7 @@ export default function POS({ darkMode, toggleDark }) {
       confirmLabel: t('pos.clearCart'),
       tone: 'danger',
       onConfirm: () => {
-        setCart([]); setDiscount(0); setPaid(''); setNote(''); setCustomerId('');
+        setCart([]); setDiscount(0); setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
         focusScanner();
       },
     });
@@ -285,7 +286,7 @@ export default function POS({ darkMode, toggleDark }) {
       // `paid` at the invoice total, so the record cannot say what was handed
       // over, and without this the receipt could never show change.
       setInvoiceModal({ ...res.data.data, _tendered: paidAmt });
-      setCart([]); setDiscount(0); setPaid(''); setNote(''); setCustomerId('');
+      setCart([]); setDiscount(0); setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
       fetchData();
       toast.success(t('pos.saleComplete'));
     } catch (err) {
@@ -303,6 +304,16 @@ export default function POS({ darkMode, toggleDark }) {
     return matchSearch && (!filterCat || String(p.categoryId) === String(filterCat));
   });
 
+  // What cannot be sold goes last. It still has to be visible — a cashier
+  // needs to be able to tell a customer "we are out" — but it should never sit
+  // between two things that can be sold.
+  const ordered = [...filtered].sort((a, b) => {
+    const aOut = a.stock <= 0 ? 1 : 0;
+    const bOut = b.stock <= 0 ? 1 : 0;
+    if (aOut !== bOut) return aOut - bOut;
+    return 0;
+  });
+
   const isInCart   = (id) => cart.some(i => i.productId === id);
   const getCartQty = (id) => cart.find(i => i.productId === id)?.quantity || 0;
   const payMethods = [
@@ -314,69 +325,72 @@ export default function POS({ darkMode, toggleDark }) {
 
   return (
     <Layout
+      rail
       title={t('pos.title')}
       subtitle={t('pos.itemsInCart', { count: num(cart.length) })}
       darkMode={darkMode} toggleDark={toggleDark}
     >
       {/* ── SCANNER BAR ─────────────────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: '10px', padding: '8px 14px' }}>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <form onSubmit={handleManualScan} style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
-            <input
-              ref={scanInputRef}
-              data-scan-input="true"
-              className="form-control"
-              placeholder={t('pos.scanPlaceholder')}
-              value={scanInput}
-              onChange={e => setScanInput(e.target.value)}
-              disabled={scanning}
-              style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px', height: '34px', letterSpacing: '0.5px' }}
-            />
-            <button
-              type="submit"
-              disabled={!scanInput.trim() || scanning}
-              className="ui-btn ui-btn--primary ui-btn--sm"
-            >
-              <Icon name="search" size={15} />
-              {t('common.search')}
-            </button>
-          </form>
-          <button
-            type="button"
-            onClick={() => setCameraOpen(true)}
-            className="ui-btn ui-btn--secondary ui-btn--sm"
-          >
-            <Icon name="camera" size={15} />
-            {t('pos.cameraScan')}
-          </button>
-          <div className="pos-scanner-ready">
-            <span className="pos-scanner-dot" aria-hidden="true" />
-            <span>{t('pos.scannerReady')}</span>
-          </div>
-          <div className="no-print pos-shortcuts">
-            <span><kbd>F2</kbd> {t('pos.shortcutScan')}</span>
-            <span><kbd>F3</kbd> {t('pos.shortcutPayment')}</span>
-            <span><kbd>F4</kbd> {t('pos.shortcutComplete')}</span>
-            <span><kbd>Esc</kbd> {t('pos.shortcutClear')}</span>
-          </div>
-        </div>
-        {scanStatus.msg && (
-          // aria-live so the outcome is announced, not just shown: the whole
-          // point is that nobody has to be looking at this line.
-          <div className={`pos-scan-status is-${scanStatus.type || 'info'}`}
-               role="status" aria-live="polite">
-            <Icon name={scanStatus.type === 'error' ? 'warning'
-                      : scanStatus.type === 'success' ? 'check' : 'search'} size={15} />
-            <span>{scanStatus.msg}</span>
-          </div>
-        )}
-      </div>
-
       {/* ── MAIN LAYOUT ─────────────────────────────────────────────────────── */}
       <div className="pos-layout">
 
         {/* LEFT — Products Grid */}
         <div className="pos-products">
+        <div className="card pos-scanbar">
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <form onSubmit={handleManualScan} style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
+              <input
+                ref={scanInputRef}
+                data-scan-input="true"
+                className="form-control"
+                placeholder={t('pos.scanPlaceholder')}
+                value={scanInput}
+                onChange={e => setScanInput(e.target.value)}
+                disabled={scanning}
+                style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px', height: '34px', letterSpacing: '0.5px' }}
+              />
+              <button
+                type="submit"
+                disabled={!scanInput.trim() || scanning}
+                className="ui-btn ui-btn--primary ui-btn--sm"
+              >
+                <Icon name="search" size={15} />
+                {t('common.search')}
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => setCameraOpen(true)}
+              className="ui-btn ui-btn--secondary ui-btn--sm"
+            >
+              <Icon name="camera" size={15} />
+              {t('pos.cameraScan')}
+            </button>
+            <div className="pos-scanner-ready">
+              <span className="pos-scanner-dot" aria-hidden="true" />
+              <span>{t('pos.scannerReady')}</span>
+            </div>
+            <div className="no-print pos-shortcuts">
+              <span><kbd>F2</kbd> {t('pos.shortcutScan')}</span>
+              <span><kbd>F3</kbd> {t('pos.shortcutPayment')}</span>
+              <span><kbd>F4</kbd> {t('pos.shortcutComplete')}</span>
+              <span><kbd>Esc</kbd> {t('pos.shortcutClear')}</span>
+            </div>
+          </div>
+          {/* The slot is always in the DOM and always the same height, so a scan
+              result appearing cannot shove the product grid down mid-tap. Only
+              its contents change. aria-live so the outcome is announced too —
+              the point is that nobody has to be watching this line. */}
+          <div className="pos-scan-slot" role="status" aria-live="polite">
+          {scanStatus.msg && (
+            <div className={`pos-scan-status is-${scanStatus.type || 'info'}`}>
+              <Icon name={scanStatus.type === 'error' ? 'warning'
+                        : scanStatus.type === 'success' ? 'check' : 'search'} size={15} />
+              <span>{scanStatus.msg}</span>
+            </div>
+          )}
+          </div>
+        </div>
           <div className="card" style={{ padding: '8px 12px', flexShrink: 0 }}>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{ position: 'relative', flex: 1, minWidth: '180px' }}>
@@ -398,7 +412,7 @@ export default function POS({ darkMode, toggleDark }) {
               <div className="empty-state"><div className="empty-icon">📦</div><div className="empty-text">No products found</div></div>
             ) : (
               <div className="pos-grid">
-                {filtered.map(p => {
+                {ordered.map(p => {
                   const inCart = isInCart(p.id);
                   const qty    = getCartQty(p.id);
                   const oos    = p.stock === 0;
@@ -415,11 +429,17 @@ export default function POS({ darkMode, toggleDark }) {
                       aria-label={`${p.name} — ${money(p.price)}`}
                     >
                       {inCart && <span className="pos-tile-qty" aria-hidden="true">{num(qty)}</span>}
-                      <ProductAvatar product={p} size={40} />
-                      <span className="pos-tile-name">{p.name}</span>
-                      <span className="pos-tile-price">{money(p.price)}</span>
-                      <span className={`pos-tile-stock${oos ? ' is-out' : p.stock <= p.lowStockAlert ? ' is-low' : ''}`}>
-                        {oos ? t('status.outOfStock') : t('pos.stockLeft', { count: num(p.stock) })}
+                      {/* A photograph earns its space; a generated monogram does
+                          not — it repeated the first letters of the name printed
+                          directly beneath it, for 40px of every tile. Products
+                          with a real picture keep a small one. */}
+                      {p.image && <ProductAvatar product={p} size={28} className="pos-tile-img" />}
+                      <span className="pos-tile-name" title={p.name}>{p.name}</span>
+                      <span className="pos-tile-foot">
+                        <span className="pos-tile-price">{money(p.price)}</span>
+                        <span className={`pos-tile-stock${oos ? ' is-out' : p.stock <= p.lowStockAlert ? ' is-low' : ''}`}>
+                          {oos ? t('status.outOfStock') : num(p.stock)}
+                        </span>
                       </span>
                     </button>
                   );
@@ -434,7 +454,7 @@ export default function POS({ darkMode, toggleDark }) {
           <div className="card pos-cart-card">
 
             {/* Cart header */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <div className="pos-cart-head">
               <div style={{ fontWeight: '700', fontSize: '15px' }}>
                 {t('pos.cart')}
                 {cart.length > 0 && <span className="pos-cart-count">{t('sales.itemCount', { count: num(cart.reduce((s, i) => s + i.quantity, 0)) })}</span>}
@@ -448,7 +468,7 @@ export default function POS({ darkMode, toggleDark }) {
             </div>
 
             {/* ── CUSTOMER ROW — Walk-in dropdown + New button inline ── */}
-            <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <div className="pos-cart-cust">
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <select
                   className="form-control"
@@ -483,16 +503,25 @@ export default function POS({ darkMode, toggleDark }) {
                   message={t('pos.cartEmptyHint')}
                 />
               ) : cart.map((item, idx) => (
-                <div key={item.productId} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderBottom: idx < cart.length-1 ? '1px solid var(--border)' : 'none' }}>
-                  <ProductAvatar product={item} size={34} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: '600', fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
-                    <div className="cell-sub">{t('pos.eachPrice', { amount: money(item.price) })}</div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
-                    <IconButton size="sm" variant="outline" icon={<Icon name="minus" size={15} />}
-                                label={t('common.previous')}
-                                onClick={() => updateQty(item.productId, item.quantity - 1)} />
+                // One line per item: name, unit price, stepper, line total,
+                // remove. It used to take three, which is why a four-item cart
+                // already needed scrolling.
+                <div key={item.productId} data-cart-row className="pos-line">
+                  <span className="pos-line-name"
+                        title={`${item.name} — ${t('pos.eachPrice', { amount: money(item.price) })}`}>
+                    {item.name}
+                  </span>
+                  <span className="pos-line-unit">{money(item.price)}</span>
+                  <div className="pos-line-qty">
+                    {/* At quantity 1 this button and the remove button do the
+                        same thing, so only one of them is shown. That returns
+                        44px to the product name on a narrow cart and lets the
+                        remove control keep a full 44x44 target. */}
+                    {item.quantity > 1 && (
+                      <IconButton size="sm" variant="outline" icon={<Icon name="minus" size={15} />}
+                                  label={t('common.previous')}
+                                  onClick={() => updateQty(item.productId, item.quantity - 1)} />
+                    )}
                     <input type="number" value={item.quantity} min="1" max={item.stock}
                            aria-label={item.name}
                            onChange={e => updateQty(item.productId, parseInt(e.target.value) || 1)}
@@ -501,51 +530,64 @@ export default function POS({ darkMode, toggleDark }) {
                                 label={t('common.add')}
                                 onClick={() => updateQty(item.productId, item.quantity + 1)} />
                   </div>
-                  <div className="pos-line-total">{money(item.total)}</div>
-                  <IconButton size="sm" variant="ghost" icon={<Icon name="close" size={15} />}
-                              label={t('common.delete')}
+                  <span className="pos-line-total">{money(item.total)}</span>
+                  <IconButton size="sm" variant="ghost" icon={<Icon name="close" size={14} />}
+                              label={t('common.delete')} className="pos-line-remove"
                               onClick={() => removeItem(item.productId)} />
                 </div>
               ))}
             </div>
 
             {/* Checkout panel */}
-            <div style={{ borderTop: '2px solid var(--border)', padding: '10px 14px', flexShrink: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                <span>{t('pos.subtotal')}</span>
-                <span style={{ fontWeight: '600' }}>{money(subtotal)}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{t('pos.discount')}</span>
-                <input type="number" min="0" max={subtotal} value={discount} onChange={e => setDiscount(e.target.value)} style={{ width: '90px', padding: '4px 8px', border: '1.5px solid var(--border)', borderRadius: '6px', textAlign: 'right', fontSize: '13px', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+            <div className="pos-cart-foot">
+              {/* Subtotal and discount on one line: two stacked rows cost
+                  ~30px of list height on every sale to say one thing each. */}
+              <div className="pos-sub-row">
+                <span className="pos-sub-label">{t('pos.subtotal')}</span>
+                <span className="pos-sub-value">{money(subtotal)}</span>
+                <label className="pos-sub-label" htmlFor="pos-discount">{t('pos.discount')}</label>
+                <input id="pos-discount" type="number" min="0" max={subtotal} value={discount}
+                       onChange={e => setDiscount(e.target.value)} className="pos-discount-input" />
               </div>
               <div className="pos-total-bar">
                 <span>{t('pos.grandTotal')}</span>
-                <span style={{ fontWeight: '900', fontSize: '18px', color: '#fff' }}>{money(total)}</span>
+                <span className="pos-total-amount">{money(total)}</span>
               </div>
-              <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', background: 'var(--bg)', borderRadius: '10px', padding: '3px', border: '1px solid var(--border)' }}>
+              <div className="pos-pay" role="group" aria-label={t('receipt.paymentMethod')}>
                 {payMethods.map(m => (
-                  <button key={m.id} onClick={() => setPayMethod(m.id)} style={{ flex: 1, padding: '6px 2px', borderRadius: '7px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', border: 'none', background: paymentMethod===m.id ? m.color : 'transparent', color: paymentMethod===m.id ? '#fff' : 'var(--text-secondary)', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>{m.label}</button>
+                  <button key={m.id} type="button"
+                          className={`pos-pay-opt${paymentMethod === m.id ? ' is-active' : ''}`}
+                          aria-pressed={paymentMethod === m.id}
+                          onClick={() => setPayMethod(m.id)}>{m.label}</button>
                 ))}
               </div>
-              <input id="pos-paid" type="number" min="0" step="0.01" placeholder={`${t('pos.amountReceived')} — ${t('pos.amountReceivedHint', { amount: money(total) })}`} value={paid} onChange={e => setPaid(e.target.value)} className="form-control" style={{ textAlign: 'right', marginBottom: '6px', fontSize: '13px' }} />
+              <input id="pos-paid" type="number" min="0" step="0.01"
+                     placeholder={t('pos.amountReceived')}
+                     aria-label={t('pos.amountReceived')}
+                     value={paid} onChange={e => setPaid(e.target.value)}
+                     className="form-control pos-paid-input" />
               {discountTooBig && (
-                <div style={{ padding: '7px 12px', borderRadius: '7px', marginBottom: '6px', background: '#fee2e2', color: '#b91c1c', fontSize: '12px', fontWeight: 600 }}>
-                  Discount is larger than the subtotal
-                </div>
+                <div className="pos-notice is-danger">{t('pos.discountTooBig')}</div>
               )}
               {needsCustomerForDue && (
-                <div style={{ padding: '7px 12px', borderRadius: '7px', marginBottom: '6px', background: '#fef3c7', color: '#b45309', fontSize: '12px', fontWeight: 600 }}>
-                  {money(dueAmt)} will be left unpaid - choose a customer above so the due can be tracked
-                </div>
+                <div className="pos-notice is-warn">{t('pos.dueNeedsCustomer', { amount: money(dueAmt) })}</div>
               )}
               {paid && paidAmt > 0 && (
-                <div style={{ padding: '7px 12px', borderRadius: '7px', marginBottom: '6px', background: change>=0 ? '#dcfce7' : '#fee2e2', display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '12px', color: change>=0 ? '#166534' : '#dc2626', fontWeight: '600' }}>{change>=0 ? '💚 Change' : '🔴 Due'}</span>
-                  <span style={{ fontWeight: '700', color: change>=0 ? '#166534' : '#dc2626' }}>{money(Math.abs(change))}</span>
+                <div className={`pos-notice is-split ${change >= 0 ? 'is-ok' : 'is-danger'}`}>
+                  <span>{change >= 0 ? t('pos.change') : t('pos.dueAmount')}</span>
+                  <span className="b">{money(Math.abs(change))}</span>
                 </div>
               )}
-              <input className="form-control" placeholder={t('common.note')} value={note} onChange={e => setNote(e.target.value)} style={{ marginBottom: '6px', fontSize: '12px' }} />
+              {/* Collapsed by default: a note is written on a small minority of
+                  sales and was costing every sale a row of height. */}
+              {noteOpen ? (
+                <input className="form-control pos-note" autoFocus placeholder={t('common.note')}
+                       value={note} onChange={e => setNote(e.target.value)} />
+              ) : (
+                <button type="button" className="pos-note-toggle" onClick={() => setNoteOpen(true)}>
+                  + {t('common.note')}
+                </button>
+              )}
               <Button
                 id="pos-checkout"
                 variant="primary"

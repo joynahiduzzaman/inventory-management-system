@@ -39,7 +39,7 @@ const navItems = [
   ]},
 ];
 
-export default function Sidebar({ darkMode, toggleDark, isOpen, onClose }) {
+export default function Sidebar({ darkMode, toggleDark, isOpen, onClose, isRail = false, canRail = false, onToggleRail }) {
   const { user, logout } = useAuth();
   const { t } = useT();
   const navigate = useNavigate();
@@ -51,17 +51,36 @@ export default function Sidebar({ darkMode, toggleDark, isOpen, onClose }) {
   };
 
   return (
-    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+    <aside className={`sidebar ${isOpen ? 'open' : ''}${isRail ? ' is-rail' : ''}`}>
       <div className="sidebar-logo">
         <div className="logo-mark">
           <div className="logo-icon" aria-hidden="true">📦</div>
-          <div>
+          <div className="sidebar-brand">
             <div className="logo-text">{t('app.name')}</div>
             <div className="logo-sub">{t('app.tagline')}</div>
           </div>
         </div>
         <button className="sidebar-close-btn" onClick={onClose} aria-label={t('header.closeMenu')}>✕</button>
       </div>
+
+      {/*
+        Click, never hover. This runs on a tablet where hover does not exist,
+        and on a desktop an accidental hover expanding the rail over the
+        product grid mid-sale would cost more than the space it saves.
+      */}
+      {canRail && (
+        <button
+          type="button"
+          className="sidebar-rail-toggle"
+          onClick={onToggleRail}
+          aria-expanded={!isRail}
+          aria-label={isRail ? t('nav.expandMenu') : t('nav.collapseMenu')}
+          title={isRail ? t('nav.expandMenu') : t('nav.collapseMenu')}
+        >
+          <span aria-hidden="true">{isRail ? '»' : '«'}</span>
+          <span className="sidebar-label">{t('nav.collapseMenu')}</span>
+        </button>
+      )}
 
       <nav className="sidebar-nav">
         {navItems.map((section) => {
@@ -77,9 +96,11 @@ export default function Sidebar({ darkMode, toggleDark, isOpen, onClose }) {
                   end={item.exact}
                   className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                   onClick={onClose}
+                  title={t(item.label)}
+                  aria-label={t(item.label)}
                 >
                   <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                  {t(item.label)}
+                  <span className="sidebar-label">{t(item.label)}</span>
                 </NavLink>
               ))}
             </div>
@@ -89,18 +110,21 @@ export default function Sidebar({ darkMode, toggleDark, isOpen, onClose }) {
 
       <div className="sidebar-footer">
         <div className="sidebar-footer-actions">
-          <button type="button" className="sidebar-util-btn" onClick={toggleDark}>
+          <button type="button" className="sidebar-util-btn" onClick={toggleDark}
+                  title={darkMode ? t('header.lightMode') : t('header.darkMode')}
+                  aria-label={darkMode ? t('header.lightMode') : t('header.darkMode')}>
             <span aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
-            {darkMode ? t('header.lightMode') : t('header.darkMode')}
+            <span className="sidebar-label">{darkMode ? t('header.lightMode') : t('header.darkMode')}</span>
           </button>
-          <button type="button" className="sidebar-util-btn is-danger" onClick={handleLogout}>
+          <button type="button" className="sidebar-util-btn is-danger" onClick={handleLogout}
+                  title={t('header.logout')} aria-label={t('header.logout')}>
             <span aria-hidden="true">🚪</span>
-            {t('header.logout')}
+            <span className="sidebar-label">{t('header.logout')}</span>
           </button>
         </div>
         <div className="user-card">
-          <div className="user-avatar" aria-hidden="true">{user?.name?.charAt(0)?.toUpperCase()}</div>
-          <div>
+          <div className="user-avatar" aria-hidden="true" title={user?.name}>{user?.name?.charAt(0)?.toUpperCase()}</div>
+          <div className="sidebar-label">
             <div className="user-name">{user?.name}</div>
             <div className="user-role">{user?.role === 'admin' ? 'Admin' : 'Staff'}</div>
           </div>

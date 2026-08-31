@@ -19,6 +19,8 @@ const en = {
   'nav.section.inventory': 'Inventory',
   'nav.section.business': 'Business',
   'nav.section.system': 'System',
+  'nav.collapseMenu': 'Collapse menu',
+  'nav.expandMenu': 'Expand menu',
   'nav.dashboard': 'Dashboard',
   'nav.pos': 'Point of Sale',
   'nav.sales': 'Sales History',

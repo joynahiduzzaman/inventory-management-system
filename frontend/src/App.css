@@ -490,8 +490,10 @@ select.form-control { cursor: pointer; }
 /* ── POS ───────────────────────────────────────────────────────────────────── */
 .pos-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
-  gap: 16px;
+  /* ~37% of the content width, clamped so it never gets uselessly narrow on a
+     small laptop or absurdly wide on a large monitor. */
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 37%, 520px);
+  gap: 14px;
   /* No fixed height: the cart sticks instead (see .pos-cart), so the checkout
      button cannot be pushed below the fold by a toolbar that wrapped. */
   align-items: start;
@@ -616,7 +618,7 @@ select.form-control { cursor: pointer; }
   /* A tablet is the device this screen is actually used on, so the cart stays
      beside the products — the total and the payment buttons must never be a
      scroll away while items are being added. */
-  .pos-layout { grid-template-columns: minmax(0, 1fr) 300px; }
+  .pos-layout { grid-template-columns: minmax(0, 1fr) clamp(300px, 38%, 380px); }
   .grid-responsive-5 { grid-template-columns: repeat(3, 1fr); }
 }
 

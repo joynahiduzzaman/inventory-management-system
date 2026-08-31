@@ -1,7 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import { useAuth } from '../context/AuthContext';
 import { useT, LANGUAGES } from '../i18n';
+
+/**
+ * Remembering whether the rail is collapsed, per user.
+ *
+ * A shop tablet is shared: the owner who works on the dashboard wants the full
+ * sidebar, the person on the till wants the space. One global setting would
+ * make them undo each other's choice every shift.
+ */
+const RAIL_KEY = 'domingo.posRail';
+const railKeyFor = (userId) => (userId ? `${RAIL_KEY}.${userId}` : RAIL_KEY);
+const readRail = (userId) => {
+  try {
+    const v = localStorage.getItem(railKeyFor(userId));
+    // Collapsed by default on the till — that is the whole point of the rail.
+    return v === null ? true : v === '1';
+  } catch { return true; }
+};
 
 /**
  * Language switch.
@@ -32,10 +50,27 @@ function LanguageToggle() {
   );
 }
 
-export default function Layout({ children, title, subtitle, actions, darkMode, toggleDark }) {
+export default function Layout({ children, title, subtitle, actions, darkMode, toggleDark, rail = false }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { pathname } = useLocation();
   const { t } = useT();
+  const { user } = useAuth();
+
+  // Collapsed only where the caller asks for it (the till), and only on a
+  // screen wide enough to have a persistent sidebar at all — below that the
+  // sidebar is already a drawer and collapsing it would mean nothing.
+  const [railCollapsed, setRailCollapsed] = useState(() => readRail(user && user.id));
+  useEffect(() => { setRailCollapsed(readRail(user && user.id)); }, [user]);
+
+  const toggleRail = () => {
+    setRailCollapsed((cur) => {
+      const next = !cur;
+      try { localStorage.setItem(railKeyFor(user && user.id), next ? '1' : '0'); } catch { /* storage off */ }
+      return next;
+    });
+  };
+
+  const isRail = rail && railCollapsed;
 
   // Close the drawer when the route actually changes. Keying this off `children`
   // fired on every parent re-render, so the drawer slammed shut mid-interaction.
@@ -55,7 +90,7 @@ export default function Layout({ children, title, subtitle, actions, darkMode, t
   }, []);
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout${isRail ? ' has-rail' : ''}`}>
 
       {/* Overlay — clicking it closes sidebar on mobile */}
       <div
@@ -68,6 +103,9 @@ export default function Layout({ children, title, subtitle, actions, darkMode, t
         toggleDark={toggleDark}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        isRail={isRail}
+        canRail={rail}
+        onToggleRail={toggleRail}
       />
 
       <div className="main-content">

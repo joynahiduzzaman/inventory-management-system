@@ -23,6 +23,8 @@ const bn = {
   'nav.section.inventory': 'মজুদ',
   'nav.section.business': 'ব্যবসা',
   'nav.section.system': 'সিস্টেম',
+  'nav.collapseMenu': 'মেনু ছোট করুন',
+  'nav.expandMenu': 'মেনু বড় করুন',
   'nav.dashboard': 'ড্যাশবোর্ড',
   'nav.pos': 'বিক্রয় কাউন্টার',
   'nav.sales': 'বিক্রয়ের তালিকা',
