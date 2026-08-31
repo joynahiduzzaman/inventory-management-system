@@ -30,12 +30,15 @@ const USE_TARGET = process.argv.includes('--target');
 
 // Names the test suites use. Anchored so a real product cannot match by accident.
 const TEST_NAME_SQL = `(
-     name LIKE 'AUDIT Test%'
-  OR name LIKE 'AUDIT Cat%'
+     name LIKE 'AUDIT %'
   OR name LIKE 'IMGTEST %'
   OR name LIKE 'CDNTEST %'
   OR name LIKE 'LIVE IMG CHECK %'
 )`;
+
+// Customers the audit suites open accounts for, so a purged debtor does not
+// leave a phantom balance behind.
+const TEST_CUSTOMER_SQL = `(name LIKE 'AUDIT %')`;
 
 function connect() {
   if (USE_TARGET) {
@@ -138,6 +141,17 @@ function connect() {
       await run(`DELETE FROM stock_movements WHERE productId IN (${inP})`);
       await run(`DELETE FROM products WHERE id IN (${inP})`);
       await run(`DELETE FROM categories WHERE name LIKE 'AUDIT Cat%'`);
+    }
+
+    // Audit customers last, and only those whose sales are already gone. There
+    // is no separate payments table — the ledger IS sales.paid/sales.due — so a
+    // customer still holding sales is one this purge did not fully cover, and
+    // removing them would orphan real invoices.
+    const custs = await q(`SELECT id FROM customers WHERE ${TEST_CUSTOMER_SQL}
+                            AND id NOT IN (SELECT DISTINCT customerId FROM sales WHERE customerId IS NOT NULL)`);
+    if (custs.length) {
+      await run(`DELETE FROM customers WHERE id IN (${custs.map(c => Number(c.id)).join(',')})`);
+      console.log(`test customers     : ${custs.length}`);
     }
     await t.commit();
   } catch (err) {

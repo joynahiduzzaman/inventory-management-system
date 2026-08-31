@@ -187,6 +187,15 @@ export default function POS({ darkMode, toggleDark }) {
   const focusScanner = useCallback(() => {
     const el = scanInputRef.current;
     if (!el) return;
+    // Never disturb a scan already in flight. Both callers defer this by 60ms
+    // (once when the invoice closes, again when the post-sale refetch flips
+    // `loading`), and a scanner gun fires a whole code in about that time. A
+    // deferred select() landing mid-burst selects the characters typed so far
+    // and lets the next one overwrite them: scanning DEMO-1019 immediately
+    // after tapping New Sale looked up MO-1019 and reported "not found".
+    // Already focused with something in it means a code is being entered, by
+    // gun or by hand, and the caret is not ours to move.
+    if (document.activeElement === el && el.value) return;
     el.focus();
     el.select();
   }, []);
