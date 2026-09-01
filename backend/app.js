@@ -166,6 +166,24 @@ app.use('/api/categories', require('./routes/categories'));
 app.use('/api/reports',    require('./routes/reports'));
 app.use('/api/pdf',        require('./routes/pdf'));
 
+/**
+ * The full standing data check, on demand.
+ *
+ * Unauthenticated /api/health stays a liveness probe; this one reads business
+ * data, so it needs a token. Point a scheduler at it, or open it after an
+ * import — it is the same check the dashboard runs bounded to a month, over
+ * all of history.
+ */
+app.get('/api/health/integrity', require('./middleware/auth').protect, async (req, res) => {
+  try {
+    const { checkDataIntegrity } = require('./config/dataIntegrity');
+    const result = await checkDataIntegrity(require('./models').sequelize);
+    res.status(result.ok ? 200 : 409).json({ success: result.ok, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.get('/api/health', async (req, res) => {
   const body = {
     status: 'OK',

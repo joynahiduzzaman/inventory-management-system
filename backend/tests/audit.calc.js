@@ -244,6 +244,87 @@ const near = (a, b, tol = 0.005) => Math.abs(Number(a) - Number(b)) < tol;
         lineSum !== null && near(lineSum, Number(mlRet.totalRefund)),
         `lines=${lineSum} total=${mlRet && mlRet.totalRefund}`);
 
+  // ══ PERCENTAGE DISCOUNT ═════════════════════════════════════════════════
+  section('Percentage discount');
+
+  // B is 10.10. 4 x 10.10 = 40.40 subtotal; 25% off = 10.10; total 30.30.
+  r = await call('POST', '/sales', {
+    items: [{ productId: B.id, quantity: 4 }], discountMode: 'percent', discountRate: 25,
+  });
+  const pc = r.d.data;
+  created.invoices.push(pc.invoiceNo);
+  check('a 25% discount resolves to taka on the server (40.40 -> 10.10 off, total 30.30)',
+        near(pc.subtotal, 40.40) && near(pc.discount, 10.10) && near(pc.total, 30.30),
+        `subtotal=${pc.subtotal} discount=${pc.discount} total=${pc.total}`);
+  check('  the mode and rate are stored as provenance',
+        pc.discountMode === 'percent' && near(pc.discountRate, 25),
+        `mode=${pc.discountMode} rate=${pc.discountRate}`);
+  check('  the invariant holds: discount === round2(subtotal x rate / 100)',
+        near(Number(pc.discount), Math.round(Number(pc.subtotal) * Number(pc.discountRate) / 100 * 100) / 100),
+        `discount=${pc.discount} recomputed=${Math.round(Number(pc.subtotal) * Number(pc.discountRate) / 100 * 100) / 100}`);
+
+  r = await call('POST', '/sales', { items: [{ productId: B.id, quantity: 2 }] });
+  const flatSale = r.d.data;
+  created.invoices.push(flatSale.invoiceNo);
+  check('a sale with no percentage carries mode=flat and no stray rate',
+        flatSale.discountMode === 'flat' && (flatSale.discountRate === null || flatSale.discountRate === undefined),
+        `mode=${flatSale.discountMode} rate=${flatSale.discountRate}`);
+
+  check('a rate above 100% is rejected, not clamped',
+        (await call('POST', '/sales', {
+          items: [{ productId: B.id, quantity: 1 }], discountMode: 'percent', discountRate: 101,
+        })).status >= 400);
+  check('a negative rate is rejected',
+        (await call('POST', '/sales', {
+          items: [{ productId: B.id, quantity: 1 }], discountMode: 'percent', discountRate: -5,
+        })).status >= 400);
+
+  r = await call('POST', '/sales', {
+    items: [{ productId: B.id, quantity: 2 }], discountMode: 'percent', discountRate: 100, paid: 0,
+  });
+  check('100% is a legitimate giveaway, not an error',
+        r.status < 400 && near(r.d.data.total, 0), `status=${r.status} total=${r.d && r.d.data && r.d.data.total}`);
+  if (r.d && r.d.data) created.invoices.push(r.d.data.invoiceNo);
+
+  // A percentage discount must NOT be recomputed from the rate at refund time.
+  // 3 x 10.10 = 30.30 at 33% => discount 10.00, total 20.30. Recomputing
+  // 30.30 x 0.67 gives 20.30 here, but the general case disagrees ~6% of the
+  // time — the refund reads the stored taka, so it cannot drift either way.
+  r = await call('POST', '/sales', {
+    items: [{ productId: B.id, quantity: 3 }], discountMode: 'percent', discountRate: 33,
+  });
+  const pcSale = r.d.data;
+  created.invoices.push(pcSale.invoiceNo);
+  r = await call('POST', '/returns', {
+    saleId: pcSale.id,
+    items: [{ saleItemId: pcSale.items[0].id, quantity: 3, restockItem: true }],
+    refundMethod: 'cash',
+  });
+  check('a FULL return against a percentage-discounted sale refunds what was paid',
+        r.d && r.d.data && near(Number(r.d.data.totalRefund), Number(pcSale.total)),
+        `refunded=${r.d && r.d.data && r.d.data.totalRefund} paid=${pcSale.total}`);
+
+  // Split return against a percentage sale — the case the user called the most
+  // likely place for money to leak.
+  r = await call('POST', '/sales', {
+    items: [{ productId: B.id, quantity: 3 }], discountMode: 'percent', discountRate: 33,
+  });
+  const pcSplit = r.d.data;
+  created.invoices.push(pcSplit.invoiceNo);
+  const pcRefunds = [];
+  for (let i = 0; i < 3; i += 1) {
+    r = await call('POST', '/returns', {
+      saleId: pcSplit.id,
+      items: [{ saleItemId: pcSplit.items[0].id, quantity: 1, restockItem: false }],
+      refundMethod: 'cash',
+    });
+    pcRefunds.push(r.d && r.d.data ? Number(r.d.data.totalRefund) : NaN);
+  }
+  const pcSum = Math.round(pcRefunds.reduce((a, b) => a + b, 0) * 100) / 100;
+  check('a 3-way split return on a percentage-discounted sale sums to what was paid',
+        near(pcSum, Number(pcSplit.total)),
+        `refunds=[${pcRefunds.join(', ')}] sum=${pcSum} paid=${pcSplit.total}`);
+
   // ── The ledger still reconciles after a discounted return ──────────────
   r = await call('POST', '/customers', { name: 'AUDIT RetDebtor ' + Date.now(), phone: '01700000456' });
   const RC = r.d.data.id;

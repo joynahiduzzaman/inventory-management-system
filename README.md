@@ -218,6 +218,30 @@ Three rules follow:
    shares down and hand the leftover paisa to the largest fractions, so the
    parts add up to the whole exactly.
 
+### Percentage discounts
+
+A discount can be entered as taka or as a percentage. The percentage is
+resolved to taka **once, on the server**, and the taka is what gets stored:
+
+| Column | Role |
+|---|---|
+| `sales.discount` | Resolved taka. **The authority** for every money calculation. |
+| `sales.discountMode` | `flat` \| `percent` — what was agreed at the counter. |
+| `sales.discountRate` | 0–100, set only when mode is `percent`. Provenance. |
+
+`discountMode` and `discountRate` are **never** used to compute money. That is
+deliberate, and measurable: the sale rounds at the discount while a
+recomputation rounds at the total, so `subtotal × (1 − rate/100)` disagrees
+with what the customer actually paid on **5.8% of sales** in the ৳100–৳5,000
+range at common rates. Refunds read the stored taka, so they cannot drift.
+
+The redundancy is checked rather than trusted — `config/dataIntegrity.js`
+asserts `discount === ROUND(subtotal × rate / 100, 2)` on every percentage sale,
+and runs at boot, from `GET /api/health/integrity`, and on every dashboard load.
+
+Both modes reject rather than clamp: a rate above 100%, or a flat amount above
+the subtotal, is a 400. 100% is a legitimate giveaway.
+
 ### Refunds on a discounted sale
 
 A refund returns what the customer **paid**, not what the goods were listed at.
@@ -297,6 +321,27 @@ access logs. On a shared machine, prefer short `JWT_EXPIRES_IN` values. Moving
 to short-lived single-use download tokens would remove this.
 
 ---
+
+## Data integrity
+
+`backend/config/dataIntegrity.js` holds the checks that must be true forever and
+that normal use would never reveal: percentage discounts matching their stored
+rate, totals equalling subtotal − discount + tax, paid + due equalling total, no
+sale refunded beyond its value, no negative stock, cached customer balances
+matching their unpaid invoices.
+
+A test suite catches drift the day someone runs it. These run:
+
+| Where | Scope | Why |
+|---|---|---|
+| boot (`server.js`) | all history | long-lived deployments |
+| `GET /api/health/integrity` | all history | on demand, or from a scheduler |
+| dashboard load | current month | **the one that catches drift six months from now** — it runs where the shopkeeper already looks every morning |
+
+The dashboard variant is bounded to a date range and every column it touches is
+indexed, so it is cheap enough to run on every load. On Vercel the API is a
+serverless function and `server.js` never runs, which is precisely why the check
+could not live at boot alone.
 
 ## Testing
 

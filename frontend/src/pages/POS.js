@@ -28,6 +28,10 @@ export default function POS({ darkMode, toggleDark }) {
   const [savingCust, setSavingCust]     = useState(false);
   const [paymentMethod, setPayMethod]   = useState('cash');
   const [discount, setDiscount]         = useState(0);
+  // Taka is the default because it is what most sales use and what every
+  // existing habit expects. The mode is not persisted between sales: carrying
+  // % over from the last customer is exactly how a ৳15 becomes ৳646.
+  const [discountMode, setDiscountMode] = useState('flat');
   const [paid, setPaid]                 = useState('');
   const [note, setNote]                 = useState('');
   const [noteOpen, setNoteOpen]         = useState(false);
@@ -255,7 +259,7 @@ export default function POS({ darkMode, toggleDark }) {
       confirmLabel: t('pos.clearCart'),
       tone: 'danger',
       onConfirm: () => {
-        setCart([]); setDiscount(0); setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
+        setCart([]); setDiscount(0); setDiscountMode('flat'); setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
         focusScanner();
       },
     });
@@ -263,10 +267,29 @@ export default function POS({ darkMode, toggleDark }) {
 
   const subtotal    = Math.round(cart.reduce((s, i) => s + i.total, 0) * 100) / 100;
   const discountRaw = parseFloat(discount) || 0;
-  // A discount bigger than the bill is a typo; the server rejects it, so flag it here too.
-  const discountAmt = Math.max(0, discountRaw);
-  const discountTooBig = discountAmt > subtotal;
-  const total       = Math.round(Math.max(0, subtotal - discountAmt) * 100) / 100;
+  const isPercent   = discountMode === 'percent';
+  // Resolve the percentage to taka here, with the same rule the server uses, so
+  // the figure on screen is the figure that will be charged.
+  const ratePct     = isPercent ? Math.max(0, discountRaw) : null;
+  // Not clamped to 100 on purpose: showing "150% = the whole bill" would be a
+  // false equivalence. Show what the typed rate actually comes to; the range
+  // check below flags it and blocks the sale.
+  const resolvedAmt = isPercent
+    ? Math.round(subtotal * ratePct / 100 * 100) / 100
+    : Math.max(0, discountRaw);
+  // A discount bigger than the bill is a typo; the server rejects it, so flag it
+  // here too. A rate above 100% is the same mistake wearing a different unit.
+  const rateTooBig     = isPercent && ratePct > 100;
+  const discountTooBig = rateTooBig || resolvedAmt > subtotal;
+  // Always show the discount in the OTHER unit as well. A cashier who types 15
+  // meaning ৳15 while the toggle sits on % sees "= ৳646.80" and cannot miss it;
+  // relying on them noticing which toggle is lit is how the loss happens.
+  const otherUnit = subtotal > 0 && discountRaw > 0
+    ? (isPercent
+        ? money(resolvedAmt)
+        : `${(Math.round((resolvedAmt / subtotal) * 1000) / 10)}%`)
+    : null;
+  const total       = Math.round(Math.max(0, subtotal - resolvedAmt) * 100) / 100;
   // Blank = "paying the full amount". A typed 0 = a fully-on-credit sale.
   const paidEntered = paid !== '' && paid !== null && paid !== undefined;
   const paidAmt     = paidEntered ? (parseFloat(paid) || 0) : total;
@@ -287,7 +310,9 @@ export default function POS({ darkMode, toggleDark }) {
       const res = await api.post('/sales', {
         customerId: customerId || null,
         items: cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
-        discount: discountAmt, tax: 0,
+        discount: isPercent ? undefined : resolvedAmt,
+        discountMode, discountRate: isPercent ? ratePct : undefined,
+        tax: 0,
         paid: paidAmt,
         paymentMethod, note
       });
@@ -295,7 +320,7 @@ export default function POS({ darkMode, toggleDark }) {
       // `paid` at the invoice total, so the record cannot say what was handed
       // over, and without this the receipt could never show change.
       setInvoiceModal({ ...res.data.data, _tendered: paidAmt });
-      setCart([]); setDiscount(0); setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
+      setCart([]); setDiscount(0); setDiscountMode('flat'); setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
       fetchData();
       toast.success(t('pos.saleComplete'));
     } catch (err) {
@@ -555,9 +580,37 @@ export default function POS({ darkMode, toggleDark }) {
                 <span className="pos-sub-label">{t('pos.subtotal')}</span>
                 <span className="pos-sub-value">{money(subtotal)}</span>
                 <label className="pos-sub-label" htmlFor="pos-discount">{t('pos.discount')}</label>
-                <input id="pos-discount" type="number" min="0" max={subtotal} value={discount}
-                       onChange={e => setDiscount(e.target.value)} className="pos-discount-input" />
+                <div className="pos-discount-group">
+                  {/* The unit sits ON the field, not only in a separate toggle,
+                      so the mode is visible where the eye already is. */}
+                  <div className="pos-disc-modes" role="group" aria-label={t('pos.discountMode')}>
+                    {[['flat', '৳'], ['percent', '%']].map(([m, sym]) => (
+                      <button key={m} type="button"
+                              className={`pos-disc-mode${discountMode === m ? ' is-active' : ''}`}
+                              aria-pressed={discountMode === m}
+                              aria-label={t(m === 'flat' ? 'pos.discountTaka' : 'pos.discountPercent')}
+                              onClick={() => { setDiscountMode(m); setDiscount(0); }}>{sym}</button>
+                    ))}
+                  </div>
+                  <input id="pos-discount" type="number" min="0" step={isPercent ? '0.5' : '0.01'}
+                         max={isPercent ? 100 : subtotal} value={discount}
+                         aria-describedby="pos-discount-resolved"
+                         onChange={e => setDiscount(e.target.value)}
+                         className={`pos-discount-input${isPercent ? ' is-percent' : ''}`} />
+                </div>
               </div>
+              {/* The same discount in the other unit, live. This is the line
+                  that catches a wrong mode before Complete Sale is pressed. */}
+              {otherUnit && (
+                <div id="pos-discount-resolved"
+                     className={`pos-disc-resolved${discountTooBig ? ' is-danger' : ''}`}
+                     aria-live="polite">
+                  <span>{isPercent
+                    ? t('pos.discountResolvedPct', { rate: discountRaw, amount: money(resolvedAmt) })
+                    : t('pos.discountResolvedFlat', { amount: money(resolvedAmt), rate: otherUnit })}</span>
+                </div>
+              )}
+
               <div className="pos-total-bar">
                 <span>{t('pos.grandTotal')}</span>
                 <span className="pos-total-amount">{money(total)}</span>
@@ -576,7 +629,7 @@ export default function POS({ darkMode, toggleDark }) {
                      value={paid} onChange={e => setPaid(e.target.value)}
                      className="form-control pos-paid-input" />
               {discountTooBig && (
-                <div className="pos-notice is-danger">{t('pos.discountTooBig')}</div>
+                <div className="pos-notice is-danger">{rateTooBig ? t('pos.rateTooBig') : t('pos.discountTooBig')}</div>
               )}
               {needsCustomerForDue && (
                 <div className="pos-notice is-warn">{t('pos.dueNeedsCustomer', { amount: money(dueAmt) })}</div>
@@ -704,7 +757,9 @@ export default function POS({ darkMode, toggleDark }) {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
                       <span style={{ color: '#dc2626' }}>Discount</span>
-                      <span style={{ fontWeight: '600', color: '#dc2626' }}>-{money(invoiceModal.discount)}</span>
+                      <span style={{ fontWeight: '600', color: '#dc2626' }}>
+                        {invoiceModal.discountMode === 'percent' && invoiceModal.discountRate
+                          ? `(${Number(invoiceModal.discountRate)}%) ` : ''}-{money(invoiceModal.discount)}</span>
                     </div>
                   </>)}
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '2px solid #e2e8f0', marginTop: '4px' }}>

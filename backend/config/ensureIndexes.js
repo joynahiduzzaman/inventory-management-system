@@ -22,6 +22,8 @@ const REQUIRED = [
   { table: 'returns',      name: 'ret_created',  columns: ['createdAt'] },
   { table: 'sales',        name: 'sales_created', columns: ['createdAt'] },
   { table: 'sales',        name: 'sales_due',     columns: ['due'] },
+  // The dashboard's bounded integrity check filters on this every load.
+  { table: 'sales',        name: 'sales_disc_mode', columns: ['discountMode'] },
   { table: 'sale_items',   name: 'si_product',    columns: ['productId'] },
   { table: 'products',     name: 'prod_active_stock', columns: ['isActive', 'stock'] },
   { table: 'products',     name: 'prod_name',     columns: ['name'] },

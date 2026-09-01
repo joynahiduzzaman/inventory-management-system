@@ -10,6 +10,8 @@ const app = require('./app');
 const { sequelize, User, Category, Supplier } = require('./models');
 const dedupeIndexes = require('./config/dedupeIndexes');
 const ensureIndexes = require('./config/ensureIndexes');
+const ensureColumns = require('./config/ensureColumns');
+const { reportDataIntegrity } = require('./config/dataIntegrity');
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -66,11 +68,21 @@ const PORT = process.env.PORT || 5000;
     // before the table hits MySQL's 64-key ceiling and startup breaks for good.
     await dedupeIndexes(sequelize);
 
+    // Columns first: sync({ alter: false }) never adds a column to a table that
+    // already exists, so the model and the schema drift apart silently — and an
+    // index cannot be built on a column that is not there yet.
+    await ensureColumns(sequelize);
+
     // sync() only applies index definitions on table creation, so pre-existing
     // tables never gained the indexes the reporting queries depend on.
     await ensureIndexes(sequelize);
 
     console.log('✅ Database connected & synced');
+
+    // Say plainly, on every start, whether the numbers still agree with
+    // themselves. Serverless deployments get this via /api/health/integrity
+    // and the dashboard instead — see config/dataIntegrity.js.
+    await reportDataIntegrity(sequelize);
     await seedData();
 
     // 0.0.0.0, not localhost: a container's health check comes from outside.

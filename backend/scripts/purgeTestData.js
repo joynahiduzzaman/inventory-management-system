@@ -107,8 +107,28 @@ function connect() {
   restore.forEach(r => console.log(`stock to give back : ${r.name} +${r.qty} (currently ${r.stock})`));
   if (allSales.length) console.log('invoices           :', allSales.map(s => s.invoiceNo).join(', '));
 
+  // Audit customers with no sales left behind. Counted separately because they
+  // outlive the products: a run that creates no products can still leave a
+  // debtor whose invoices were purged earlier, and a stale dueAmount on one is
+  // exactly the drift the standing data check reports.
+  const strays = await q(`SELECT id, name, dueAmount FROM customers WHERE ${TEST_CUSTOMER_SQL}
+                            AND id NOT IN (SELECT DISTINCT customerId FROM sales WHERE customerId IS NOT NULL)`);
+  if (strays.length) console.log(`stray test customers: ${strays.length}`);
+
   if (DRY) { console.log('\n--dry-run: nothing changed.'); await db.close(); return; }
-  if (!products.length && !allSales.length) { console.log('\nNothing to remove.'); await db.close(); return; }
+
+  if (!products.length && !allSales.length && !strays.length) {
+    console.log('\nNothing to remove.'); await db.close(); return;
+  }
+
+  // Remove strays even when there is nothing else to do — the main block below
+  // is skipped entirely when no test products were found.
+  if (strays.length && !products.length && !allSales.length) {
+    await db.query(`DELETE FROM customers WHERE id IN (${strays.map(c => Number(c.id)).join(',')})`);
+    console.log(`\n✅ Removed ${strays.length} stray test customer(s).`);
+    await db.close();
+    return;
+  }
 
   // ── Back up everything about to be deleted ────────────────────────────────
   const dir = path.join(__dirname, '..', 'backups');
@@ -131,9 +151,17 @@ function connect() {
       await run(`UPDATE products SET stock = stock + ${Number(r.qty)} WHERE id = ${Number(r.productId)}`);
     }
 
-    // Reverse the customer running totals those sales contributed to.
-    for (const s of allSales.filter(x => x.customerId)) {
-      await run(`UPDATE customers SET totalPurchase = GREATEST(0, totalPurchase - ${Number(s.total)}) WHERE id = ${Number(s.customerId)}`);
+    // Recompute the customer running totals from whatever sales remain, rather
+    // than subtracting the removed ones. Subtracting fixed totalPurchase and
+    // left dueAmount untouched, so a purged debtor kept a balance with no
+    // invoice behind it — which the standing data check then reported as drift.
+    // Recomputing cannot drift by construction.
+    const touched = [...new Set(allSales.filter(x => x.customerId).map(x => Number(x.customerId)))];
+    for (const cid of touched) {
+      await run(`UPDATE customers c SET
+                   c.totalPurchase = COALESCE((SELECT SUM(s.total) FROM sales s WHERE s.customerId = c.id), 0),
+                   c.dueAmount     = COALESCE((SELECT SUM(s.due)   FROM sales s WHERE s.customerId = c.id), 0)
+                 WHERE c.id = ${cid}`);
     }
 
     if (pids.length) {

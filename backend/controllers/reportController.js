@@ -34,6 +34,7 @@
 const { Sale, SaleItem, Product, Expense, Customer, sequelize } = require('../models');
 const { Op, QueryTypes } = require('sequelize');
 const { roundMoney } = require('../utils/money');
+const { checkDataIntegrity } = require('../config/dataIntegrity');
 
 /**
  * Every report response goes out through here.
@@ -221,6 +222,19 @@ exports.getDashboard = async (req, res) => {
     const grossProfit   = monthRevenue - monthCOGS;
     const netProfit     = grossProfit  - monthExpenses;
 
+    // The standing check, bounded to this month so the dashboard can afford it
+    // on every load. This is the one that catches drift six months from now:
+    // it runs where the shopkeeper already looks every morning, rather than
+    // when somebody remembers to run the test suite. A failure here never
+    // breaks the dashboard — the figures are still correct to report.
+    let integrity = null;
+    try {
+      const r = await checkDataIntegrity(sequelize, { range: { start: monthStart, end: monthEnd } });
+      integrity = { ok: r.ok, problems: r.problems.map((p) => ({ key: p.key, label: p.label, count: p.count })) };
+    } catch (e) {
+      integrity = { ok: null, problems: [], error: 'check unavailable' };
+    }
+
     send(res, {
       success: true,
       data: {
@@ -256,6 +270,7 @@ exports.getDashboard = async (req, res) => {
           totalDue:    parseFloat(dueRows[0]?.totalDue ?? 0),
           dueInvoices: parseInt(dueRows[0]?.dueInvoices ?? 0),
         },
+        integrity,
       },
     });
   } catch (err) {

@@ -170,7 +170,11 @@ export function buildReceiptHtml(inv, { width = 80, t, money, lang = 'bn', cashi
 
   <div class="hr2"></div>
   ${Number(inv.discount || 0) > 0 ? line(t('receipt.subtotal'), money(subtotal)) : ''}
-  ${Number(inv.discount || 0) > 0 ? line(t('receipt.discount'), `- ${money(inv.discount)}`) : ''}
+  ${Number(inv.discount || 0) > 0 ? line(
+      inv.discountMode === 'percent' && inv.discountRate
+        ? t('receipt.discountPct', { rate: Number(inv.discountRate) })
+        : t('receipt.discount'),
+      `- ${money(inv.discount)}`) : ''}
   <div class="row total"><span>${esc(t('receipt.total'))}</span><span>${esc(money(inv.total))}</span></div>
   ${line(t('receipt.paymentMethod'), t(`pos.payment.${inv.paymentMethod || 'cash'}`))}
   ${cash != null ? line(t('pos.amountReceived'), money(cash), 'b') : line(t('receipt.paid'), money(paid), 'b')}

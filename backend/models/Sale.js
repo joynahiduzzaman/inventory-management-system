@@ -7,7 +7,15 @@ const Sale = sequelize.define('Sale', {
   customerId: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'customers', key: 'id' } },
   userId: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'users', key: 'id' } },
   subtotal: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+  // The resolved taka amount, and the single authority for every money
+  // calculation that touches a discount — refunds, reports, receipts.
   discount: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  // What was actually agreed at the counter. Provenance, never arithmetic:
+  // recomputing a total from the rate disagrees with what the customer paid on
+  // ~6% of sales, because the sale rounds at the discount and a recomputation
+  // rounds at the total. See README "Money and rounding".
+  discountMode: { type: DataTypes.ENUM('flat', 'percent'), defaultValue: 'flat' },
+  discountRate: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
   tax: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
   total: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
   paid: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },

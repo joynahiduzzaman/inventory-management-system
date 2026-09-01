@@ -27,7 +27,7 @@ const generateInvoice = async (transaction) => {
 exports.createSale = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { customerId, items, discount, tax, paid, paymentMethod, note } = req.body;
+    const { customerId, items, discount, discountMode, discountRate, tax, paid, paymentMethod, note } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
       await t.rollback();
@@ -83,11 +83,38 @@ exports.createSale = async (req, res) => {
 
     subtotal = round2(subtotal);
 
-    const discountAmt = V.money(discount, 'Discount');
-    const taxAmt      = V.money(tax, 'Tax');
+    const taxAmt = V.money(tax, 'Tax');
+
+    // ── Discount ─────────────────────────────────────────────────────────
+    //
+    // Two ways to enter the same thing. The percentage is resolved to taka
+    // HERE, once, and the taka is what gets stored and what every later
+    // calculation reads. The rate is kept alongside it as a record of what was
+    // agreed, never as something to recompute from: rounding the discount and
+    // rounding the total land on different paisa for about 6% of sales.
+    const mode = discountMode === 'percent' ? 'percent' : 'flat';
+    let discountAmt;
+    let ratePct = null;
+
+    if (mode === 'percent') {
+      ratePct = V.money(discountRate, 'Discount rate', { max: 100 });
+      // 100% is a giveaway and legitimate; above it is a slip.
+      if (ratePct > 100) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Discount rate (${ratePct}%) cannot be more than 100%`,
+        });
+      }
+      discountAmt = round2(subtotal * ratePct / 100);
+    } else {
+      discountAmt = V.money(discount, 'Discount');
+    }
 
     // Reject rather than silently clamp — a discount larger than the bill is a
-    // data-entry mistake, and swallowing it corrupts discount reporting.
+    // data-entry mistake, and swallowing it corrupts discount reporting. A
+    // percentage capped at 100 cannot reach here, so this is the flat path's
+    // guard and a backstop for a subtotal that changed underneath.
     if (discountAmt > subtotal) {
       await t.rollback();
       return res.status(400).json({
@@ -110,7 +137,7 @@ exports.createSale = async (req, res) => {
       invoiceNo: await generateInvoice(t),
       customerId: custId,
       userId: req.user.id,
-      subtotal, discount: discountAmt, tax: taxAmt,
+      subtotal, discount: discountAmt, discountMode: mode, discountRate: ratePct, tax: taxAmt,
       total, paid: paidAmt, due,
       paymentMethod: method,
       note: V.optString(note, 'Note', { max: 1000 }),
