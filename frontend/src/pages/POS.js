@@ -7,7 +7,7 @@ import CameraScannerModal from '../components/CameraScannerModal';
 import { errorMessage } from '../utils/config';
 import { useT } from '../i18n';
 import Icon from '../components/Icon';
-import { Button, IconButton, ProductAvatar, EmptyState, useConfirm } from '../components/ui';
+import { Button, IconButton, ProductAvatar, EmptyState, GridSkeleton, useConfirm } from '../components/ui';
 import { scanOk, scanFail } from '../components/scanFeedback';
 import { printReceipt, saveReceiptWidth } from '../utils/receipt';
 import { useAuth } from '../context/AuthContext';
@@ -35,6 +35,9 @@ export default function POS({ darkMode, toggleDark }) {
   const [paid, setPaid]                 = useState('');
   const [note, setNote]                 = useState('');
   const [noteOpen, setNoteOpen]         = useState(false);
+  // Which cart line just changed, and whether it is new or an increment. The
+  // class is cleared on a timer so re-adding the same item animates again.
+  const [pulse, setPulse]               = useState(null);
   const [loading, setLoading]           = useState(true);
   const [processing, setProcessing]     = useState(false);
   const [invoiceModal, setInvoiceModal] = useState(null);
@@ -63,6 +66,13 @@ export default function POS({ darkMode, toggleDark }) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Clear the pulse marker shortly after the animation it triggers.
+  useEffect(() => {
+    if (!pulse) return undefined;
+    const id = setTimeout(() => setPulse(null), 200);
+    return () => clearTimeout(id);
+  }, [pulse]);
+
   // ─── Add product to cart ─────────────────────────────────────────────────────
   const addToCart = useCallback((product) => {
     if (product.stock === 0) {
@@ -80,6 +90,7 @@ export default function POS({ darkMode, toggleDark }) {
         }
         setScanStatus({ msg: t('pos.scanFound', { name: product.name }), type: 'success' });
         scanOk();
+        setPulse({ id: product.id, kind: 'bump' });
         return prev.map(i => i.productId === product.id
           ? { ...i, quantity: i.quantity + 1, total: (i.quantity + 1) * i.price }
           : i
@@ -87,6 +98,7 @@ export default function POS({ darkMode, toggleDark }) {
       }
       setScanStatus({ msg: t('pos.scanFound', { name: product.name }), type: 'success' });
       scanOk();
+      setPulse({ id: product.id, kind: 'new' });
       return [...prev, {
         productId: product.id,
         name: product.name,
@@ -259,7 +271,8 @@ export default function POS({ darkMode, toggleDark }) {
       confirmLabel: t('pos.clearCart'),
       tone: 'danger',
       onConfirm: () => {
-        setCart([]); setDiscount(0); setDiscountMode('flat'); setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
+        setCart([]); setDiscount(0); setDiscountMode('flat'); setPayMethod('cash');
+        setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
         focusScanner();
       },
     });
@@ -320,7 +333,8 @@ export default function POS({ darkMode, toggleDark }) {
       // `paid` at the invoice total, so the record cannot say what was handed
       // over, and without this the receipt could never show change.
       setInvoiceModal({ ...res.data.data, _tendered: paidAmt });
-      setCart([]); setDiscount(0); setDiscountMode('flat'); setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
+      setCart([]); setDiscount(0); setDiscountMode('flat'); setPayMethod('cash');
+        setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
       fetchData();
       toast.success(t('pos.saleComplete'));
     } catch (err) {
@@ -441,9 +455,19 @@ export default function POS({ darkMode, toggleDark }) {
 
           <div className="pos-product-scroll">
             {loading ? (
-              <div className="loading-page"><div className="spinner" /></div>
+              <GridSkeleton count={24} />
             ) : filtered.length === 0 ? (
-              <div className="empty-state"><div className="empty-icon">📦</div><div className="empty-text">No products found</div></div>
+              <EmptyState
+                icon={<Icon name="box" size={34} />}
+                title={t('pos.noProductsTitle')}
+                message={search || filterCat ? t('pos.noProductsFiltered') : t('pos.noProductsHint')}
+                action={(search || filterCat) ? (
+                  <Button variant="secondary" size="sm"
+                          onClick={() => { setSearch(''); setFilterCat(''); }}>
+                    {t('pos.clearFilters')}
+                  </Button>
+                ) : null}
+              />
             ) : (
               <div className="pos-grid">
                 {ordered.map(p => {
@@ -462,18 +486,34 @@ export default function POS({ darkMode, toggleDark }) {
                       onClick={() => addToCart(p)}
                       aria-label={`${p.name} — ${money(p.price)}`}
                     >
-                      {inCart && <span className="pos-tile-qty" aria-hidden="true">{num(qty)}</span>}
+                      {inCart && (
+                        <span className={`pos-tile-qty${pulse && pulse.id === p.id ? ' is-bump' : ''}`}
+                              aria-hidden="true">{num(qty)}</span>
+                      )}
+                      {/* Out of stock is a corner badge, not a word sharing the
+                          last line with the price. Sharing meant two nowrap
+                          items shrinking into each other and painting one on
+                          top of the other — ৳380.00 over "স্টক শেষ". A tile
+                          that is out of stock can never also be in the cart,
+                          so the corner is free. */}
+                      {oos && <span className="pos-tile-oos">{t('status.outOfStockShort')}</span>}
                       {/* A photograph earns its space; a generated monogram does
                           not — it repeated the first letters of the name printed
                           directly beneath it, for 40px of every tile. Products
                           with a real picture keep a small one. */}
                       {p.image && <ProductAvatar product={p} size={28} className="pos-tile-img" />}
-                      <span className="pos-tile-name" title={p.name}>{p.name}</span>
+                      <span className={`pos-tile-name${inCart || oos ? ' has-badge' : ''}`} title={p.name}>{p.name}</span>
                       <span className="pos-tile-foot">
                         <span className="pos-tile-price">{money(p.price)}</span>
-                        <span className={`pos-tile-stock${oos ? ' is-out' : p.stock <= p.lowStockAlert ? ' is-low' : ''}`}>
-                          {oos ? t('status.outOfStock') : num(p.stock)}
-                        </span>
+                        {/* Only a count here now — short, so it cannot crowd the
+                            price. Colour carries the state: quiet when healthy,
+                            amber when low. Out of stock is the corner badge. */}
+                        {!oos && (
+                          <span className={`pos-tile-stock${p.stock <= p.lowStockAlert ? ' is-low' : ''}`}
+                                title={t('pos.inStock', { count: num(p.stock) })}>
+                            {num(p.stock)}
+                          </span>
+                        )}
                       </span>
                     </button>
                   );
@@ -535,12 +575,19 @@ export default function POS({ darkMode, toggleDark }) {
                   icon={<Icon name="cart" size={36} />}
                   title={t('pos.cartEmpty')}
                   message={t('pos.cartEmptyHint')}
+                  action={
+                    <Button variant="secondary" size="sm"
+                            onClick={() => focusScannerRef.current?.()}>
+                      {t('pos.scanToStart')}
+                    </Button>
+                  }
                 />
               ) : cart.map((item, idx) => (
                 // One line per item: name, unit price, stepper, line total,
                 // remove. It used to take three, which is why a four-item cart
                 // already needed scrolling.
-                <div key={item.productId} data-cart-row className="pos-line">
+                <div key={item.productId} data-cart-row
+                     className={`pos-line${pulse && pulse.id === item.productId && pulse.kind === 'new' ? ' is-new' : ''}`}>
                   <span className="pos-line-name"
                         title={`${item.name} — ${t('pos.eachPrice', { amount: money(item.price) })}`}>
                     {item.name}
@@ -564,7 +611,8 @@ export default function POS({ darkMode, toggleDark }) {
                                 label={t('pos.increaseQty')}
                                 onClick={() => updateQty(item.productId, item.quantity + 1)} />
                   </div>
-                  <span className="pos-line-total">{money(item.total)}</span>
+                  <span className={`pos-line-total${pulse && pulse.id === item.productId && pulse.kind === 'bump' ? ' is-bump' : ''}`}>
+                    {money(item.total)}</span>
                   <IconButton size="sm" variant="ghost" icon={<Icon name="close" size={14} />}
                               label={t('common.delete')} className="pos-line-remove"
                               onClick={() => removeItem(item.productId)} />
@@ -599,26 +647,43 @@ export default function POS({ darkMode, toggleDark }) {
                          className={`pos-discount-input${isPercent ? ' is-percent' : ''}`} />
                 </div>
               </div>
-              {/* The same discount in the other unit, live. This is the line
-                  that catches a wrong mode before Complete Sale is pressed. */}
-              {otherUnit && (
-                <div id="pos-discount-resolved"
-                     className={`pos-disc-resolved${discountTooBig ? ' is-danger' : ''}`}
-                     aria-live="polite">
-                  <span>{isPercent
-                    ? t('pos.discountResolvedPct', { rate: discountRaw, amount: money(resolvedAmt) })
-                    : t('pos.discountResolvedFlat', { amount: money(resolvedAmt), rate: otherUnit })}</span>
-                </div>
-              )}
+              {/* One line for two small things: the note affordance on the
+                  left, the live discount equivalence on the right. The note
+                  used to be a full-width bar of its own for something written
+                  on a small minority of sales; this line was already here and
+                  half empty. */}
+              <div className="pos-meta-row">
+                {noteOpen ? (
+                  <input className="form-control pos-note" autoFocus placeholder={t('common.note')}
+                         value={note} onChange={e => setNote(e.target.value)} />
+                ) : (
+                  <button type="button" className={`pos-note-toggle${note ? ' has-note' : ''}`}
+                          onClick={() => setNoteOpen(true)}>
+                    {note ? `✎ ${note}` : `+ ${t('common.note')}`}
+                  </button>
+                )}
+                {otherUnit && (
+                  <span id="pos-discount-resolved"
+                        className={`pos-disc-resolved${discountTooBig ? ' is-danger' : ''}`}
+                        aria-live="polite">
+                    {isPercent
+                      ? t('pos.discountResolvedPct', { rate: discountRaw, amount: money(resolvedAmt) })
+                      : t('pos.discountResolvedFlat', { amount: money(resolvedAmt), rate: otherUnit })}
+                  </span>
+                )}
+              </div>
 
               <div className="pos-total-bar">
                 <span>{t('pos.grandTotal')}</span>
                 <span className="pos-total-amount">{money(total)}</span>
               </div>
+              {/* Cash is most sales, so it gets the width; the other three stay
+                  one tap away rather than one menu away. All four keep the tap
+                  floor — the height is shared, only the width differs. */}
               <div className="pos-pay" role="group" aria-label={t('receipt.paymentMethod')}>
                 {payMethods.map(m => (
                   <button key={m.id} type="button"
-                          className={`pos-pay-opt${paymentMethod === m.id ? ' is-active' : ''}`}
+                          className={`pos-pay-opt${paymentMethod === m.id ? ' is-active' : ''}${m.id === 'cash' ? ' is-primary' : ''}`}
                           aria-pressed={paymentMethod === m.id}
                           onClick={() => setPayMethod(m.id)}>{m.label}</button>
                 ))}
@@ -639,16 +704,6 @@ export default function POS({ darkMode, toggleDark }) {
                   <span>{change >= 0 ? t('pos.change') : t('pos.dueAmount')}</span>
                   <span className="b">{money(Math.abs(change))}</span>
                 </div>
-              )}
-              {/* Collapsed by default: a note is written on a small minority of
-                  sales and was costing every sale a row of height. */}
-              {noteOpen ? (
-                <input className="form-control pos-note" autoFocus placeholder={t('common.note')}
-                       value={note} onChange={e => setNote(e.target.value)} />
-              ) : (
-                <button type="button" className="pos-note-toggle" onClick={() => setNoteOpen(true)}>
-                  + {t('common.note')}
-                </button>
               )}
               <Button
                 id="pos-checkout"
@@ -679,8 +734,17 @@ export default function POS({ darkMode, toggleDark }) {
           className="pos-mobile-cart-bar"
           onClick={() => document.getElementById('pos-cart-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         >
-          <span>🛒 {cart.reduce((n, i) => n + i.quantity, 0)} item{cart.reduce((n, i) => n + i.quantity, 0) === 1 ? '' : 's'}</span>
-          <span>{money(total)} — review &amp; pay →</span>
+          {/* Both halves were hard-coded English and stayed English in the
+              Bangla UI, on the one control a phone cashier uses most. The keys
+              already existed. */}
+          <span className="pos-mcb-count">
+            <Icon name="cart" size={16} aria-hidden="true" />
+            {t('sales.itemCount', { count: num(cart.reduce((n, i) => n + i.quantity, 0)) })}
+          </span>
+          <span className="pos-mcb-total">
+            <span className="num">{money(total)}</span>
+            <span className="pos-mcb-cta">{t('pos.reviewAndPay')} →</span>
+          </span>
         </button>
       )}
 

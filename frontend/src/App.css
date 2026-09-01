@@ -768,9 +768,32 @@ select.form-control { cursor: pointer; }
     background: var(--accent);
     color: #fff;
     font-family: inherit;
-    font-size: 13px;
-    font-weight: 700;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semi);
+    color: var(--on-accent);
     cursor: pointer;
-    box-shadow: var(--shadow-lg);
+    /* It floats over the grid, so it takes the overlay level — the only thing
+       on this screen that sits above the page content. */
+    box-shadow: var(--elev-overlay);
+  }
+
+  /* Two halves, each internally grouped: the count reads as one unit with its
+     icon, the total as one unit with its call to action. */
+  .pos-mcb-count {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    font-weight: var(--weight-semi);
+  }
+  .pos-mcb-total {
+    display: inline-flex; align-items: baseline; gap: var(--space-2);
+    min-width: 0;
+  }
+  .pos-mcb-total .num {
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    letter-spacing: -0.01em;
+  }
+  .pos-mcb-cta {
+    font-size: var(--text-xs); font-weight: var(--weight-semi); opacity: 0.85;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 }

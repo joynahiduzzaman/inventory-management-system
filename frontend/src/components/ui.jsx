@@ -350,6 +350,30 @@ export function TableSkeleton({ rows = 6, cols = 5 }) {
   );
 }
 
+/**
+ * Placeholder tiles for a grid whose shape is already known.
+ *
+ * A spinner says "wait" and nothing else; the layout then appears all at once
+ * and everything shifts. Drawing the tiles that are coming keeps the page
+ * still and tells the cashier what is arriving.
+ */
+export function GridSkeleton({ count = 24 }) {
+  return (
+    <div className="pos-grid" aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="pos-tile-skeleton">
+          <span className="sk-line sk-name" />
+          <span className="sk-line sk-name sk-short" />
+          <span className="sk-foot">
+            <span className="sk-line sk-price" />
+            <span className="sk-line sk-stock" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Spinner({ label }) {
   return (
     <div className="loading-page">

@@ -130,6 +130,22 @@
   --shadow-md: 0 6px 16px rgba(16, 20, 26, 0.10);
   --shadow-lg: 0 16px 40px rgba(16, 20, 26, 0.16);
 
+  /* ── Elevation — three levels, by ROLE not by size ──────────────────────
+     Shadow answers one question: what sits above what. Three answers is
+     enough for a till, and naming them after the role stops a fourth being
+     invented the next time something needs to look important.
+
+       flat     on the page          product tiles, table rows, inputs
+       raised   above the page       the cart panel, popovers, sticky bars
+       overlay  above everything     modals, the camera scanner
+
+     Borders still do the fine separation; these only carry the layering. */
+  --elev-flat:    0 1px 1px rgba(16, 20, 26, 0.04);
+  --elev-raised:  0 1px 2px rgba(16, 20, 26, 0.05), 0 8px 24px -14px rgba(16, 20, 26, 0.22);
+  --elev-overlay: 0 2px 4px rgba(16, 20, 26, 0.06), 0 24px 56px -20px rgba(16, 20, 26, 0.34);
+  /* Lift on hover is the same shadow one step up, never a new one. */
+  --elev-hover:   0 2px 4px rgba(16, 20, 26, 0.07), 0 10px 22px -14px rgba(16, 20, 26, 0.20);
+
   --ring: 0 0 0 3px var(--accent-100);
 
   /* ── Motion ───────────────────────────────────────────────────────────── */
@@ -186,6 +202,14 @@
   --shadow:    0 2px 6px rgba(0, 0, 0, 0.45);
   --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+
+  /* On a dark ground a drop shadow reads as dirt, so elevation is carried
+     mostly by the surface getting lighter (--bg-card vs --bg) with only a
+     faint shadow to seat it. Same three roles, same names. */
+  --elev-flat:    0 1px 1px rgba(0, 0, 0, 0.32);
+  --elev-raised:  0 1px 2px rgba(0, 0, 0, 0.42), 0 8px 24px -14px rgba(0, 0, 0, 0.6);
+  --elev-overlay: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 56px -20px rgba(0, 0, 0, 0.75);
+  --elev-hover:   0 2px 4px rgba(0, 0, 0, 0.45), 0 10px 22px -14px rgba(0, 0, 0, 0.55);
 }
 
 /* Bengali needs a little more line height and a slightly larger optical size
@@ -197,4 +221,19 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root { --transition: 0ms; }
+}
+
+/* ── Numerals ──────────────────────────────────────────────────────────────
+   Every figure a cashier compares down a column — prices on tiles, line
+   totals in the cart, amounts in a report — must use tabular figures, or the
+   digits shift width and the column stops being a column. Both faces here
+   carry a tabular set; Hind Siliguri renders Latin digits, which is why the
+   Bengali UI keeps Latin numerals for money. */
+.num,
+.pos-tile-price, .pos-tile-stock,
+.pos-line-price, .pos-line-total, .pos-qty-input,
+.pos-sub-value, .pos-total-amount, .pos-discount-input, .pos-disc-resolved,
+.stat-value, .money, td.n, .table-num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
 }

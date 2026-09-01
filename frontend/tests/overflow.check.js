@@ -83,6 +83,69 @@ const probe = () => {
     }
   });
 
+  // ── Overlapping text ────────────────────────────────────────────────────
+  // The reported bug was "৳380.00" and "Out of stock" drawn on top of each
+  // other. scrollWidth could not see it and neither could the paint-past-edge
+  // check: both boxes were inside the tile, they simply occupied the same
+  // pixels. So compare the rectangles of text-bearing siblings directly.
+  // An element scrolled out of its own scroll container is not visible, however
+  // much its rectangle overlaps whatever is painted beyond the container's
+  // edge. The cart list scrolls UNDER the totals footer by design.
+  const visibleInAncestors = (el) => {
+    const r = el.getBoundingClientRect();
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.overflow === 'visible' && cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+      const pr = p.getBoundingClientRect();
+      if (r.bottom <= pr.top + 1 || r.top >= pr.bottom - 1) return false;
+      if (r.right <= pr.left + 1 || r.left >= pr.right - 1) return false;
+    }
+    return true;
+  };
+
+  const textBoxes = [...document.querySelectorAll(
+    '.pos-tile-name, .pos-tile-price, .pos-tile-stock, .pos-tile-oos, .pos-tile-qty,' +
+    '.pos-line-name, .pos-line-price, .pos-line-total,' +
+    '.pos-sub-label, .pos-sub-value, .pos-note-toggle, .pos-disc-resolved,' +
+    '.pos-total-bar > *, .pos-pay-opt'
+  )].filter((el) => el.textContent.trim() && el.getClientRects().length && visibleInAncestors(el));
+
+  const contentBox = (el) => {
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    const pad = (v) => parseFloat(cs[v]) || 0;
+    return {
+      left:   r.left   + pad('paddingLeft')   + (parseFloat(cs.borderLeftWidth)   || 0),
+      right:  r.right  - pad('paddingRight')  - (parseFloat(cs.borderRightWidth)  || 0),
+      top:    r.top    + pad('paddingTop')    + (parseFloat(cs.borderTopWidth)    || 0),
+      bottom: r.bottom - pad('paddingBottom') - (parseFloat(cs.borderBottomWidth) || 0),
+    };
+  };
+
+  out.overlaps = [];
+  for (let i = 0; i < textBoxes.length; i++) {
+    for (let j = i + 1; j < textBoxes.length; j++) {
+      const a = textBoxes[i], b = textBoxes[j];
+      if (a.contains(b) || b.contains(a)) continue;           // nesting is not collision
+      // Compare CONTENT boxes, not padded ones. A name that reserves a 22px
+      // gutter for a corner badge legitimately has that badge sitting over its
+      // padding — the text is what must not collide.
+      const ra = contentBox(a), rb = contentBox(b);
+      // 1px of tolerance: adjacent boxes legitimately share an edge.
+      const dx = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+      const dy = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+      if (dx > 1 && dy > 1) {
+        const nm = (el) => (typeof el.className === 'string' && el.className
+          ? '.' + el.className.trim().split(/\s+/)[0] : el.tagName);
+        out.overlaps.push({
+          a: nm(a), b: nm(b),
+          text: (a.textContent.trim().slice(0, 14) + ' / ' + b.textContent.trim().slice(0, 14)),
+          by: Math.round(dx) + 'x' + Math.round(dy),
+        });
+      }
+    }
+  }
+
   // Controls without which a sale cannot be completed.
   const need = {
     'total amount': '.pos-total-amount',
@@ -164,6 +227,7 @@ const probe = () => {
       check(`${tag}: document does not scroll horizontally`, d.docOverflow <= 0, `overflow=${d.docOverflow}px`);
       check(`${tag}: nothing painted past the right edge`, d.past.length === 0, JSON.stringify(d.past.slice(0, 3)));
       check(`${tag}: nothing silently clipped by overflow:hidden`, d.clipped.length === 0, JSON.stringify(d.clipped.slice(0, 3)));
+      check(`${tag}: no two pieces of text drawn on top of each other`, d.overlaps.length === 0, JSON.stringify(d.overlaps.slice(0, 3)));
       d.controls.forEach((c) => check(`${tag}: ${c.label} fully visible`, !!c.inside, c.missing ? 'not rendered' : ''));
       check(`${tag}: all payment methods visible`, d.payAllInside, `${d.payCount} options`);
       if (n > 0) check(`${tag}: every cart row has qty, stepper and remove`, d.rowsComplete, `${d.rowCount} rows`);
