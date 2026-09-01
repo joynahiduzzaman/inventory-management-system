@@ -14,6 +14,6 @@
     "migrate:check": "cd backend && npm run migrate:check"
   },
   "engines": {
-    "node": ">=18"
+    "node": "22.x"
   }
 }

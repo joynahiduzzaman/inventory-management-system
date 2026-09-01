@@ -43,6 +43,35 @@ if (!process.env.DATABASE_URL && !process.env.DB_NAME) {
   throw new Error('No database configured. Set DATABASE_URL, or DB_HOST/DB_USER/DB_PASSWORD/DB_NAME.');
 }
 
+// ── A preview deployment must never write to real sales ──────────────────────
+// Every branch pushed to a Git-connected project gets a preview deployment.
+// Those previews are useful precisely because they are real builds — and
+// dangerous for exactly the same reason: give one the production database
+// credentials and a test branch is writing to the shop's actual ledger, with
+// no marker in the data to say which rows came from where.
+//
+// Today this cannot happen, because the project's environment variables are
+// scoped to Production only, so a preview has no DATABASE_URL and stops at the
+// check above. But that safety is a dashboard setting one careless "All
+// Environments" checkbox away from being gone, and the failure would be silent.
+// So state the rule in code, where it survives dashboard edits:
+//
+//   a preview may run, but only against a database somebody chose for it.
+//
+// Set PREVIEW_DATABASE_URL to point previews at a scratch database, or
+// ALLOW_PREVIEW_DB=true to deliberately accept the risk for one investigation.
+if (process.env.VERCEL_ENV === 'preview' && process.env.ALLOW_PREVIEW_DB !== 'true') {
+  if (process.env.PREVIEW_DATABASE_URL) {
+    process.env.DATABASE_URL = process.env.PREVIEW_DATABASE_URL;
+  } else {
+    throw new Error(
+      'Refusing to start: this is a PREVIEW deployment pointed at the production database. '
+      + 'Set PREVIEW_DATABASE_URL to a scratch database for Preview scope, or set '
+      + 'ALLOW_PREVIEW_DB=true if you really intend a preview to write to real data.'
+    );
+  }
+}
+
 // Image storage is a production requirement, not a nicety. Uploads are refused
 // outright rather than silently falling back to database blobs (see
 // productController.saveUpload), but a refused upload is only noticed when

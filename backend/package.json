@@ -14,7 +14,9 @@
     "migrate:prod": "node scripts/migrateToProduction.js",
     "images:cloudinary": "node scripts/imagesToCloudinary.js",
     "images:cloudinary:dry": "node scripts/imagesToCloudinary.js --dry-run",
-    "migrate:check": "node scripts/migrateToProduction.js --check"
+    "migrate:check": "node scripts/migrateToProduction.js --check",
+    "migrate:schema": "node scripts/migrateSchema.js",
+    "migrate:schema:check": "node scripts/migrateSchema.js --check"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

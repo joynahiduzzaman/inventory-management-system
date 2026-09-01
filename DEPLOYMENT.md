@@ -33,6 +33,45 @@ from Cloudinary's CDN — neither the API nor the database is in that path. That
 keeps the free database tier's ~1 GB for inventory data, and stops a catalogue
 page from turning into dozens of database round trips.
 
+## Deploying from Git (schema first)
+
+Vercel builds this project from the repository. The API is a serverless
+function — `api/index.js` requires `backend/app.js` directly — so **`server.js`
+never runs in production**, and neither does its boot sequence: no `sync()`, no
+`ensureIndexes`, no `ensureColumns`, no integrity report.
+
+The consequence: **a column added to a model never reaches production by
+itself.** Deploying code that writes a new column to a database that lacks it
+fails on the first write, on real data, with `Unknown column`.
+
+So the order is always:
+
+```bash
+# 1. Check what production's schema is missing (reads only, changes nothing)
+cd backend && npm run migrate:schema:check
+
+# 2. Apply it (idempotent — safe to re-run, never alters or drops)
+npm run migrate:schema
+
+# 3. Only then push. The push is the deploy.
+git push origin main
+```
+
+`migrate:schema` writes to `TARGET_DATABASE_URL` and never to the local
+database. Running it twice is a no-op.
+
+### Preview deployments
+
+Every branch pushed to a Git-connected project gets a preview build. Preview
+deployments must not reach the production database. Two things enforce that:
+
+1. **Environment variables are scoped to Production only.** A preview therefore
+   has no `DATABASE_URL` and no `JWT_SECRET`, and `app.js` throws at load.
+   Never add a variable with "All Environments" selected.
+2. **`app.js` refuses to start** when `VERCEL_ENV=preview` unless
+   `PREVIEW_DATABASE_URL` is set (Preview scope) or `ALLOW_PREVIEW_DB=true` is
+   set deliberately. This survives a dashboard mistake, which (1) does not.
+
 ## What had to change to run serverless
 
 | Serverless constraint | How the app handles it |
