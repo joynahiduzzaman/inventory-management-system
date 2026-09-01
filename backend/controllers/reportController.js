@@ -33,6 +33,19 @@
 
 const { Sale, SaleItem, Product, Expense, Customer, sequelize } = require('../models');
 const { Op, QueryTypes } = require('sequelize');
+const { roundMoney } = require('../utils/money');
+
+/**
+ * Every report response goes out through here.
+ *
+ * These figures are built by subtracting one SUM from another — grossRevenue
+ * minus returns, revenue minus COGS — and binary floats leak straight through:
+ * gross profit came back as 1606.8399999999997. Nothing displayed it wrongly,
+ * because this app's UI happens to round for display, but rounding belongs at
+ * the boundary where the number leaves the server, not in whichever client
+ * happens to read it next.
+ */
+const send = (res, payload) => res.json(roundMoney(payload));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Timezone helpers  (BST = UTC+6)
@@ -208,7 +221,7 @@ exports.getDashboard = async (req, res) => {
     const grossProfit   = monthRevenue - monthCOGS;
     const netProfit     = grossProfit  - monthExpenses;
 
-    res.json({
+    send(res, {
       success: true,
       data: {
         today: {
@@ -272,7 +285,7 @@ exports.getSalesChart = async (req, res) => {
       ORDER BY DATE(createdAt) ASC
     `, { replacements: { start }, type: QueryTypes.SELECT });
 
-    res.json({ success: true, data: rows });
+    send(res, { success: true, data: rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -327,7 +340,7 @@ exports.getTopProducts = async (req, res) => {
       `, { replacements: { from, to }, type: QueryTypes.SELECT });
     });
 
-    res.json({ success: true, data });
+    send(res, { success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -366,7 +379,7 @@ exports.getProfitReport = async (req, res) => {
     const grossProfit   = revenue - cogs;
     const netProfit     = grossProfit - expense;
 
-    res.json({
+    send(res, {
       success: true,
       data: {
         grossRevenue, totalReturns,
@@ -438,7 +451,7 @@ exports.getSalesSummary = async (req, res) => {
     const grossProfit  = revenue - cogs;
     const netProfit    = grossProfit - expenses;
 
-    res.json({
+    send(res, {
       success: true,
       data: {
         sales,
@@ -502,7 +515,7 @@ exports.getProductSalesReport = async (req, res) => {
       `, { replacements: { start, end }, type: QueryTypes.SELECT });
     });
 
-    res.json({ success: true, data: rows, period: { start, end } });
+    send(res, { success: true, data: rows, period: { start, end } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -533,7 +546,7 @@ exports.getStockMovements = async (req, res) => {
       limit,
     });
 
-    res.json({
+    send(res, {
       success: true,
       data: rows,
       pagination: { page, limit, total: count, pages: Math.ceil(count / limit) },
@@ -565,7 +578,7 @@ exports.getPaymentBreakdown = async (req, res) => {
        ORDER BY total DESC
     `, { replacements: { start, end }, type: QueryTypes.SELECT });
 
-    res.json({ success: true, data: rows, period: { start, end } });
+    send(res, { success: true, data: rows, period: { start, end } });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Could not load payment breakdown' });
   }
@@ -601,7 +614,7 @@ exports.getInventoryReport = async (req, res) => {
       low:         a.low + (r.status === 'low' ? 1 : 0),
     }), { costValue: 0, retailValue: 0, units: 0, out: 0, low: 0 });
 
-    res.json({ success: true, data: rows, totals: { ...totals, productCount: rows.length } });
+    send(res, { success: true, data: rows, totals: { ...totals, productCount: rows.length } });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Could not load inventory report' });
   }

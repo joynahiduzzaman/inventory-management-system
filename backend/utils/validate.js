@@ -8,6 +8,8 @@
  * human-readable message (no raw SQL/Sequelize text ever reaches the user).
  */
 
+const { round2 } = require('./money');
+
 class ValidationError extends Error {
   constructor(message, field) {
     super(message);
@@ -44,7 +46,7 @@ const money = (value, label, { required = false, max = 9999999999.99 } = {}) => 
   if (!Number.isFinite(n)) throw new ValidationError(`${label} must be a valid number`, label);
   if (n < 0) throw new ValidationError(`${label} cannot be negative`, label);
   if (n > max) throw new ValidationError(`${label} is too large`, label);
-  return Math.round(n * 100) / 100;
+  return round2(n);
 };
 
 /** Whole, non-negative count. Rejects decimals outright rather than rounding. */

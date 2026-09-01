@@ -185,6 +185,56 @@ truth for refunds. All date boundaries use BST (UTC+6).
 
 ---
 
+## Money and rounding
+
+**There is exactly one rounding rule, and it lives in `backend/utils/money.js`:**
+
+```js
+round2(x) === Math.round(x * 100) / 100      // two decimals, half away from zero
+```
+
+Every taka figure the system stores or returns goes through `round2` — sale
+totals, discounts, refunds, customer balances, report figures. Import it; do not
+re-implement it.
+
+Do not introduce a second idiom. `parseFloat(x.toFixed(2))` looks equivalent and
+mostly is, but it rounds the decimal *string* rather than the number. A
+September 2026 audit found it living alone in `returnController` while every
+other file used `round2`. The two agreed on every value tested, which is exactly
+what makes a second idiom dangerous — it is wrong rarely enough that nobody
+notices.
+
+Three rules follow:
+
+1. **Accumulate unrounded, round once.** Three lines at 33.333 rounded
+   individually give 99.99; rounding the sum gives 100.00.
+2. **Round at the boundary, not at the view.** Report endpoints send their
+   payload through `roundMoney()`, which rounds every non-integer number in the
+   response. Before this, gross profit went out as `1606.8399999999997` and was
+   only ever correct because this UI happened to round for display; the next
+   consumer would have inherited the float.
+3. **Split a total by largest remainder, never by rounding each share.** When
+   one amount is divided across lines — a multi-line refund, say — round the
+   shares down and hand the leftover paisa to the largest fractions, so the
+   parts add up to the whole exactly.
+
+### Refunds on a discounted sale
+
+A refund returns what the customer **paid**, not what the goods were listed at.
+Each returned line carries its proportional share of the sale's discount:
+
+```
+factor = (subtotal − discount) / subtotal
+```
+
+Returns are allocated by telescoping: each return refunds the discounted value
+of everything returned so far, minus what earlier returns already gave back. A
+sale returned in three pieces therefore refunds exactly what was paid, with the
+last return absorbing the rounding remainder rather than stranding a paisa.
+Tax is deliberately outside this calculation.
+
+---
+
 ## PDF endpoints
 
 | Endpoint | Output |

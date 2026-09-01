@@ -1,6 +1,7 @@
 const { Customer, Sale, SaleItem } = require('../models');
 const { Op } = require('sequelize');
 const V = require('../utils/validate');
+const { round2 } = require('../utils/money');
 
 const parseCustomer = (body) => ({
   name:    V.reqString(body.name, 'Customer name', { max: 150 }),
@@ -189,7 +190,7 @@ exports.collectDue = async (req, res) => {
       'SELECT COALESCE(SUM(due), 0) AS outstanding FROM sales WHERE customerId = :customerId FOR UPDATE',
       { replacements: { customerId }, type: sequelize.QueryTypes.SELECT, transaction: t }
     );
-    const owed = Math.round(parseFloat(outstanding || 0) * 100) / 100;
+    const owed = round2(parseFloat(outstanding || 0));
 
     if (owed <= 0) {
       await t.rollback();
@@ -215,12 +216,12 @@ exports.collectDue = async (req, res) => {
 
     for (const inv of unpaid) {
       if (remaining <= 0) break;
-      const invDue = Math.round(parseFloat(inv.due || 0) * 100) / 100;
+      const invDue = round2(parseFloat(inv.due || 0));
       if (invDue <= 0) continue;
 
-      const applied = Math.round(Math.min(remaining, invDue) * 100) / 100;
-      const newPaid = Math.round((parseFloat(inv.paid || 0) + applied) * 100) / 100;
-      const newDue  = Math.round((invDue - applied) * 100) / 100;
+      const applied = round2(Math.min(remaining, invDue));
+      const newPaid = round2(parseFloat(inv.paid || 0) + applied);
+      const newDue  = round2(invDue - applied);
 
       await inv.update({ paid: newPaid, due: newDue }, { transaction: t });
 
@@ -232,7 +233,7 @@ exports.collectDue = async (req, res) => {
         settled: newDue === 0,
       });
 
-      remaining = Math.round((remaining - applied) * 100) / 100;
+      remaining = round2(remaining - applied);
     }
 
     // Recompute from the table rather than subtracting, so the cached total can
@@ -242,7 +243,7 @@ exports.collectDue = async (req, res) => {
       'SELECT COALESCE(SUM(due), 0) AS balance FROM sales WHERE customerId = :customerId FOR UPDATE',
       { replacements: { customerId }, type: sequelize.QueryTypes.SELECT, transaction: t }
     );
-    const newBalance = Math.round(parseFloat(balance || 0) * 100) / 100;
+    const newBalance = round2(parseFloat(balance || 0));
     await customer.update({ dueAmount: newBalance }, { transaction: t });
 
     await t.commit();
@@ -278,7 +279,7 @@ exports.getDue = async (req, res) => {
       attributes: ['id', 'invoiceNo', 'total', 'paid', 'due', 'createdAt'],
     });
 
-    const outstanding = Math.round(unpaid.reduce((s, i) => s + parseFloat(i.due || 0), 0) * 100) / 100;
+    const outstanding = round2(unpaid.reduce((s, i) => s + parseFloat(i.due || 0), 0));
 
     res.json({
       success: true,
@@ -288,7 +289,7 @@ exports.getDue = async (req, res) => {
         outstanding,
         // Surfaced deliberately: if the cached total ever disagrees with the
         // invoices, the caller should be able to see that rather than trust it.
-        cachedBalance: Math.round(parseFloat(customer.dueAmount || 0) * 100) / 100,
+        cachedBalance: round2(parseFloat(customer.dueAmount || 0)),
         invoices: unpaid,
       },
     });

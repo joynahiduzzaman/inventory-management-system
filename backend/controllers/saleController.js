@@ -1,6 +1,7 @@
 const { Sale, SaleItem, Product, Customer, User, StockMovement, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const V = require('../utils/validate');
+const { round2 } = require('../utils/money');
 
 const PAYMENT_METHODS = ['cash', 'bkash', 'nagad', 'card'];
 
@@ -70,7 +71,7 @@ exports.createSale = async (req, res) => {
 
       const unitPrice = parseFloat(product.price);
       const unitCost  = parseFloat(product.cost) || 0;
-      const itemTotal = Math.round(unitPrice * quantity * 100) / 100;
+      const itemTotal = round2(unitPrice * quantity);
       subtotal += itemTotal;
 
       saleItems.push({
@@ -80,7 +81,7 @@ exports.createSale = async (req, res) => {
       stockOps.push({ product, quantity });
     }
 
-    subtotal = Math.round(subtotal * 100) / 100;
+    subtotal = round2(subtotal);
 
     const discountAmt = V.money(discount, 'Discount');
     const taxAmt      = V.money(tax, 'Tax');
@@ -95,7 +96,7 @@ exports.createSale = async (req, res) => {
       });
     }
 
-    const total = Math.round((subtotal - discountAmt + taxAmt) * 100) / 100;
+    const total = round2(subtotal - discountAmt + taxAmt);
 
     // Distinguish "field omitted" (assume paid in full) from an explicit 0,
     // which is a legitimate fully-on-credit sale.
@@ -103,7 +104,7 @@ exports.createSale = async (req, res) => {
     const paidRaw = paidProvided ? V.money(paid, 'Amount paid') : total;
     // Anything handed over above the total is change, not revenue.
     const paidAmt = Math.min(paidRaw, total);
-    const due     = Math.round((total - paidAmt) * 100) / 100;
+    const due     = round2(total - paidAmt);
 
     const sale = await Sale.create({
       invoiceNo: await generateInvoice(t),
@@ -133,8 +134,8 @@ exports.createSale = async (req, res) => {
       const customer = await Customer.findByPk(custId, { transaction: t, lock: t.LOCK.UPDATE });
       if (customer) {
         await customer.update({
-          totalPurchase: Math.round((parseFloat(customer.totalPurchase || 0) + total) * 100) / 100,
-          dueAmount:     Math.round((parseFloat(customer.dueAmount || 0) + due) * 100) / 100,
+          totalPurchase: round2(parseFloat(customer.totalPurchase || 0) + total),
+          dueAmount:     round2(parseFloat(customer.dueAmount || 0) + due),
         }, { transaction: t });
       }
     }
@@ -305,15 +306,15 @@ exports.collectDue = async (req, res) => {
       });
     }
 
-    const newPaid = Math.round((parseFloat(sale.paid) + collectAmt) * 100) / 100;
-    const newDue  = Math.round(Math.max(0, currentDue - collectAmt) * 100) / 100;
+    const newPaid = round2(parseFloat(sale.paid) + collectAmt);
+    const newDue  = round2(Math.max(0, currentDue - collectAmt));
     await sale.update({ paid: newPaid, due: newDue }, { transaction: t });
 
     if (sale.customerId) {
       const customer = await Customer.findByPk(sale.customerId, { transaction: t, lock: t.LOCK.UPDATE });
       if (customer) {
         await customer.update({
-          dueAmount: Math.round(Math.max(0, parseFloat(customer.dueAmount) - collectAmt) * 100) / 100,
+          dueAmount: round2(Math.max(0, parseFloat(customer.dueAmount) - collectAmt)),
         }, { transaction: t });
       }
     }

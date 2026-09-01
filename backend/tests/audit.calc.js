@@ -185,6 +185,87 @@ const near = (a, b, tol = 0.005) => Math.abs(Number(a) - Number(b)) < tol;
         r.d && r.d.data && near(Number(r.d.data.totalRefund), 20.20),
         `refunded=${r.d && r.d.data && r.d.data.totalRefund}`);
 
+  // ── Split returns must sum back to what was paid ───────────────────────
+  //
+  // 3 x 10.10 = 30.30 subtotal, discount 10.00, total 20.30. The discount does
+  // NOT divide evenly by three: each unit is worth 6.7666... and rounding each
+  // one on its own gives 6.77 x 3 = 20.31 — a paisa the shop never took.
+  // Returning the units one at a time, in three separate returns, must still
+  // total exactly 20.30.
+  r = await call('POST', '/sales', { items: [{ productId: B.id, quantity: 3 }], discount: 10.00, paid: 20.30 });
+  const sp = r.d.data;
+  created.invoices.push(sp.invoiceNo);
+  check('uneven split sale set up (subtotal 30.30, discount 10.00, total 20.30)',
+        near(sp.subtotal, 30.30) && near(sp.total, 20.30),
+        `subtotal=${sp.subtotal} total=${sp.total}`);
+
+  const splitRefunds = [];
+  for (let i = 0; i < 3; i += 1) {
+    r = await call('POST', '/returns', {
+      saleId: sp.id,
+      items: [{ saleItemId: sp.items[0].id, quantity: 1, restockItem: false }],
+      refundMethod: 'cash',
+    });
+    splitRefunds.push(r.d && r.d.data ? Number(r.d.data.totalRefund) : NaN);
+  }
+  const splitSum = Math.round(splitRefunds.reduce((a, b) => a + b, 0) * 100) / 100;
+  check('a 3-way split return sums to exactly what was paid (20.30), no paisa stranded',
+        near(splitSum, 20.30),
+        `refunds=[${splitRefunds.join(', ')}] sum=${splitSum} paid=${sp.total}`);
+  check('  and no single split line is rounded away to zero',
+        splitRefunds.every((x) => x > 0), `refunds=[${splitRefunds.join(', ')}]`);
+  check('  a fourth return is refused — everything is already back',
+        (await call('POST', '/returns', {
+          saleId: sp.id,
+          items: [{ saleItemId: sp.items[0].id, quantity: 1, restockItem: false }],
+          refundMethod: 'cash',
+        })).status >= 400);
+
+  // Multi-line return: the line refunds must add up to the return's total.
+  r = await call('POST', '/sales', {
+    items: [{ productId: A.id, quantity: 3 }, { productId: B.id, quantity: 3 }],
+    discount: 7.77,
+  });
+  const ml = r.d.data;
+  created.invoices.push(ml.invoiceNo);
+  r = await call('POST', '/returns', {
+    saleId: ml.id,
+    items: ml.items.map((it) => ({ saleItemId: it.id, quantity: it.quantity, restockItem: false })),
+    refundMethod: 'cash',
+  });
+  const mlRet = r.d && r.d.data;
+  const lineSum = mlRet && mlRet.items
+    ? Math.round(mlRet.items.reduce((a, x) => a + Number(x.refundTotal), 0) * 100) / 100
+    : null;
+  check('a full multi-line return refunds exactly the sale total',
+        mlRet && near(Number(mlRet.totalRefund), Number(ml.total)),
+        `refunded=${mlRet && mlRet.totalRefund} total=${ml.total}`);
+  check('  and the line refunds add up to the return total, to the paisa',
+        lineSum !== null && near(lineSum, Number(mlRet.totalRefund)),
+        `lines=${lineSum} total=${mlRet && mlRet.totalRefund}`);
+
+  // ── The ledger still reconciles after a discounted return ──────────────
+  r = await call('POST', '/customers', { name: 'AUDIT RetDebtor ' + Date.now(), phone: '01700000456' });
+  const RC = r.d.data.id;
+  created.customers.push(RC);
+  r = await call('POST', '/sales', {
+    items: [{ productId: B.id, quantity: 4 }], discount: 10.40, paid: 0, customerId: RC,
+  });
+  const dueSale = r.d.data;
+  created.invoices.push(dueSale.invoiceNo);
+  check('a discounted sale on credit owes the discounted total (30.00), not the list price',
+        near(Number(dueSale.due), 30.00), `due=${dueSale.due}`);
+
+  await call('POST', '/returns', {
+    saleId: dueSale.id,
+    items: [{ saleItemId: dueSale.items[0].id, quantity: 4, restockItem: true }],
+    refundMethod: 'cash',
+  });
+  const ledger = (await call('GET', `/customers/${RC}/due`)).d.data;
+  check('after a discounted return the ledger still reconciles',
+        near(Number(ledger.outstanding), Number(ledger.cachedBalance)),
+        `invoices=${ledger.outstanding} cached=${ledger.cachedBalance}`);
+
   // ══ STOCK ═══════════════════════════════════════════════════════════════
   section('Stock');
 
