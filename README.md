@@ -301,6 +301,41 @@ The server now collapses these duplicates on every boot and adds the indexes the
 reporting queries need. Run it manually with `npm run db:fix-indexes` — useful
 if a table has already hit the ceiling and the app will not start.
 
+### Changing the schema: `server.js` does not run in production
+
+**On Vercel the boot sequence never executes.** The API is a serverless
+function: `api/index.js` requires `backend/app.js` directly, so everything
+`server.js` does on the way up — `sync()`, `dedupeIndexes`, `ensureIndexes`,
+`ensureColumns`, the integrity report — is absent from the deployment that
+holds the real data. Locally all of it runs on every `npm run dev`, which is
+exactly what makes this easy to miss: the schema keeps up with the models on
+your machine and silently does not in production.
+
+Two consequences:
+
+1. **A column added to a model never reaches production by itself.** Deploying
+   code that writes a new column to a database that lacks it fails on the first
+   write, on real data, with `Unknown column`. This was caught once already —
+   `sales.discountMode` and `sales.discountRate` existed locally and not on
+   production TiDB, one push away from breaking every sale.
+2. **Schema can only move forward from outside**, which is what
+   `scripts/migrateSchema.js` is for.
+
+So when you add a column to a model, add it to `config/ensureColumns.js` and to
+`EXPECTED` in `scripts/migrateSchema.js`, then:
+
+```bash
+cd backend
+npm run migrate:schema:check   # read-only: reports drift, changes nothing
+npm run migrate:schema         # applies it; idempotent, additive only
+git push                       # only now — the push is the deploy
+```
+
+The same reasoning is why the standing data check
+(`config/dataIntegrity.js`) is wired into the dashboard request path and not
+only into boot: a boot-time check would cover local development and be missing
+from production entirely. See [Data integrity](#data-integrity).
+
 ---
 
 ## Security
