@@ -235,6 +235,7 @@ const bn = {
   'returns.splitNote': 'এই ফেরত থেকে {settled} বাকিতে জমা হয়েছে, {cash} নগদে দেওয়া হয়েছে',
   'returns.settlement': 'বাকি পরিশোধ',
   'returns.balanceHistory': 'হিসাবের ইতিহাস',
+  'pos.moreItems': '↓ আরও {count} টি',
   'pos.discountMode': 'ছাড়ের ধরন',
   'pos.discountTaka': 'টাকায় ছাড়',
   'pos.discountPercent': 'শতাংশে ছাড়',

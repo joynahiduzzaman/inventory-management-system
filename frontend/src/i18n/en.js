@@ -233,6 +233,7 @@ const en = {
   'returns.splitNote': '{settled} of this refund cleared the debt, {cash} was handed over',
   'returns.settlement': 'Debt settled',
   'returns.balanceHistory': 'Balance history',
+  'pos.moreItems': '↓ {count} more',
   'pos.discountMode': 'Discount type',
   'pos.discountTaka': 'Discount in taka',
   'pos.discountPercent': 'Discount as a percentage',

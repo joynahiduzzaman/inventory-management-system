@@ -38,6 +38,13 @@ export default function POS({ darkMode, toggleDark }) {
   // Which cart line just changed, and whether it is new or an increment. The
   // class is cleared on a timer so re-adding the same item animates again.
   const [pulse, setPulse]               = useState(null);
+  // How many cart rows are scrolled out of sight. Rendered as a count rather
+  // than a fade: a fade says "something continues", a number says exactly what
+  // you cannot see. The previous fade was also invisible in practice — the list
+  // is snapped to end flush with a row edge, so there was nothing to fade into.
+  const [hiddenRows, setHiddenRows]     = useState(0);
+  // The customer selector is collapsed until it is wanted.
+  const [custOpen, setCustOpen]         = useState(false);
   const [loading, setLoading]           = useState(true);
   const [processing, setProcessing]     = useState(false);
   const [invoiceModal, setInvoiceModal] = useState(null);
@@ -208,19 +215,38 @@ export default function POS({ darkMode, toggleDark }) {
           const rows = Math.max(1, Math.floor((usable + 0.5) / rowH));
           target = Math.round(chrome + padTop + rows * rowH);
         }
-        // Tells the CSS to show the bottom fade and reserve the scrollbar. This
-        // class was referenced by the stylesheet and set by nothing, so neither
-        // affordance had ever appeared.
         list.classList.toggle('is-scrollable', overflowing);
       }
 
       el.style.setProperty('--pos-cart-max', `${target}px`);
+
+      // Count AFTER the panel has been resized, not before. Measuring first
+      // counted rows against the previous height, so a ten-item cart reported
+      // seven hidden when four were — the number was describing the layout as
+      // it had been one frame earlier.
+      if (list) {
+        const listBottom = list.getBoundingClientRect().bottom;
+        let hidden = 0;
+        list.querySelectorAll('[data-cart-row]').forEach((rw) => {
+          if (rw.getBoundingClientRect().top >= listBottom - 0.5) hidden += 1;
+        });
+        setHiddenRows((prev) => (prev === hidden ? prev : hidden));
+      }
     };
     fit();
     window.addEventListener('resize', fit);
+    const list = cartRef.current && cartRef.current.querySelector('.pos-cart-items');
+    if (list) list.addEventListener('scroll', fit, { passive: true });
     const id = setInterval(fit, 400);   // toolbar rewraps, and the cart changes
-    return () => { window.removeEventListener('resize', fit); clearInterval(id); };
-  }, [loading]);
+    return () => {
+      window.removeEventListener('resize', fit);
+      if (list) list.removeEventListener('scroll', fit);
+      clearInterval(id);
+    };
+    // cart.length is a dependency because the count must be right the instant
+    // a row is added, not up to 400ms later. Without it the control briefly
+    // showed the previous sale's number.
+  }, [loading, cart.length]);
 
   /** Print the finished invoice at the chosen paper width. */
   const doPrint = useCallback((width) => {
@@ -306,7 +332,7 @@ export default function POS({ darkMode, toggleDark }) {
       confirmLabel: t('pos.clearCart'),
       tone: 'danger',
       onConfirm: () => {
-        setCart([]); setDiscount(0); setDiscountMode('flat'); setPayMethod('cash');
+        setCart([]); setDiscount(0); setDiscountMode('flat'); setPayMethod('cash'); setCustOpen(false);
         setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
         focusScanner();
       },
@@ -368,7 +394,7 @@ export default function POS({ darkMode, toggleDark }) {
       // `paid` at the invoice total, so the record cannot say what was handed
       // over, and without this the receipt could never show change.
       setInvoiceModal({ ...res.data.data, _tendered: paidAmt });
-      setCart([]); setDiscount(0); setDiscountMode('flat'); setPayMethod('cash');
+      setCart([]); setDiscount(0); setDiscountMode('flat'); setPayMethod('cash'); setCustOpen(false);
         setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
       fetchData();
       toast.success(t('pos.saleComplete'));
@@ -563,44 +589,45 @@ export default function POS({ darkMode, toggleDark }) {
         <div className="pos-cart" id="pos-cart-panel" ref={cartRef}>
           <div className="card pos-cart-card">
 
-            {/* Cart header */}
+            {/* Cart header — now also carries the customer control.
+                The customer selector had a full row to itself on every sale,
+                and most sales are walk-in, so that row was 55px spent on the
+                rarest interaction. It is a chip here: one tap to open it when
+                somebody is buying on credit, nothing at all the rest of the
+                time. */}
             <div className="pos-cart-head">
-              <div style={{ fontWeight: '700', fontSize: '15px' }}>
+              <div className="pos-cart-title">
                 {t('pos.cart')}
                 {cart.length > 0 && <span className="pos-cart-count">{t('sales.itemCount', { count: num(cart.reduce((s, i) => s + i.quantity, 0)) })}</span>}
               </div>
-              {cart.length > 0 && (
-                <Button id="pos-clear" size="sm" variant="ghost"
-                        title={`${t('pos.clearCart')} (Esc)`} onClick={clearCart}>
-                  {t('common.clear')}
-                </Button>
-              )}
-            </div>
-
-            {/* ── CUSTOMER ROW — Walk-in dropdown + New button inline ── */}
-            <div className="pos-cart-cust">
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <select
-                  className="form-control"
-                  style={{ flex: 1, fontSize: '13px' }}
-                  value={customerId}
-                  onChange={e => setCustomerId(e.target.value)}
-                >
-                  <option value="">{t('pos.walkInCustomer')}</option>
-                  {customers.map(cu => (
-                    <option key={cu.id} value={cu.id}>
-                      {cu.name}{cu.phone ? ` — ${cu.phone}` : ''}
-                      {cu.dueAmount > 0 ? ` ⚠️ Due: ৳${cu.dueAmount}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => { setNewCust({ name: '', phone: '', email: '', address: '' }); setAddCustModal(true); }}
-                  className="ui-btn ui-btn--primary ui-btn--sm"
-                  title="Add new customer"
-                >
-                  {t('pos.newCustomer')}
-                </button>
+              <div className="pos-head-right">
+                {custOpen || customerId ? (
+                  <select className="form-control pos-cust-select" value={customerId}
+                          autoFocus={custOpen && !customerId}
+                          onChange={e => { setCustomerId(e.target.value); if (!e.target.value) setCustOpen(false); }}>
+                    <option value="">{t('pos.walkInCustomer')}</option>
+                    {customers.map(cu => (
+                      <option key={cu.id} value={cu.id}>
+                        {cu.name}{cu.phone ? ` — ${cu.phone}` : ''}
+                        {cu.dueAmount > 0 ? ` ⚠️ ${money(cu.dueAmount)}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <button type="button" className="pos-cust-chip" onClick={() => setCustOpen(true)}>
+                    <Icon name="user" size={14} aria-hidden="true" />
+                    {t('pos.walkInCustomer')}
+                  </button>
+                )}
+                <IconButton size="sm" variant="secondary" label={t('pos.newCustomer')}
+                            icon={<Icon name="plus" size={15} />}
+                            onClick={() => { setNewCust({ name: '', phone: '', email: '', address: '' }); setAddCustModal(true); }} />
+                {cart.length > 0 && (
+                  <Button id="pos-clear" size="sm" variant="ghost"
+                          title={`${t('pos.clearCart')} (Esc)`} onClick={clearCart}>
+                    {t('common.clear')}
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -657,9 +684,24 @@ export default function POS({ darkMode, toggleDark }) {
             </div>
 
             {/* Checkout panel */}
+            {/* Says what is out of sight, and gets you there. Sits between the
+                list and the totals so it reads as the end of the list. */}
+            {hiddenRows > 0 && (
+              <button type="button" className="pos-more" data-hidden={hiddenRows}
+                      onClick={() => {
+                        const el = cartRef.current && cartRef.current.querySelector('.pos-cart-items');
+                        if (el) el.scrollBy({ top: el.clientHeight, behavior: 'smooth' });
+                      }}>
+                {t('pos.moreItems', { count: num(hiddenRows) })}
+              </button>
+            )}
+
             <div className="pos-cart-foot">
               {/* Subtotal and discount on one line: two stacked rows cost
                   ~30px of list height on every sale to say one thing each. */}
+              {/* Subtotal, discount, note and the live discount readout used to be
+                  two full rows plus a third for the note. They are one block
+                  now, sitting directly on top of the total they produce. */}
               <div className="pos-sub-row">
                 <span className="pos-sub-label">{t('pos.subtotal')}</span>
                 <span className="pos-sub-value">{money(subtotal)}</span>
@@ -688,29 +730,36 @@ export default function POS({ darkMode, toggleDark }) {
                   used to be a full-width bar of its own for something written
                   on a small minority of sales; this line was already here and
                   half empty. */}
-              <div className="pos-meta-row">
-                {noteOpen ? (
-                  <input className="form-control pos-note" autoFocus placeholder={t('common.note')}
-                         value={note} onChange={e => setNote(e.target.value)} />
-                ) : (
-                  <button type="button" className={`pos-note-toggle${note ? ' has-note' : ''}`}
-                          onClick={() => setNoteOpen(true)}>
-                    {note ? `✎ ${note}` : `+ ${t('common.note')}`}
-                  </button>
-                )}
-                {otherUnit && (
-                  <span id="pos-discount-resolved"
-                        className={`pos-disc-resolved${discountTooBig ? ' is-danger' : ''}`}
-                        aria-live="polite">
-                    {isPercent
-                      ? t('pos.discountResolvedPct', { rate: discountRaw, amount: money(resolvedAmt) })
-                      : t('pos.discountResolvedFlat', { amount: money(resolvedAmt), rate: otherUnit })}
-                  </span>
-                )}
-              </div>
+              {/* Only rendered when it has something to say. An always-present
+                  row cost 30px on every sale to show a note button. */}
+              {(noteOpen || otherUnit) && (
+                <div className="pos-meta-row">
+                  {noteOpen ? (
+                    <input className="form-control pos-note" autoFocus placeholder={t('common.note')}
+                           value={note} onChange={e => setNote(e.target.value)} />
+                  ) : <span />}
+                  {otherUnit && (
+                    <span id="pos-discount-resolved"
+                          className={`pos-disc-resolved${discountTooBig ? ' is-danger' : ''}`}
+                          aria-live="polite">
+                      {isPercent
+                        ? t('pos.discountResolvedPct', { rate: discountRaw, amount: money(resolvedAmt) })
+                        : t('pos.discountResolvedFlat', { amount: money(resolvedAmt), rate: otherUnit })}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="pos-total-bar">
-                <span>{t('pos.grandTotal')}</span>
+                <span className="pos-total-left">
+                  {t('pos.grandTotal')}
+                  {!noteOpen && (
+                    <button type="button" className={`pos-note-toggle${note ? ' has-note' : ''}`}
+                            onClick={() => setNoteOpen(true)}>
+                      {note ? `✎ ${note}` : `+ ${t('common.note')}`}
+                    </button>
+                  )}
+                </span>
                 <span className="pos-total-amount">{money(total)}</span>
               </div>
               {/* Cash is most sales, so it gets the width; the other three stay
