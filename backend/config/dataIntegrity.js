@@ -21,6 +21,13 @@
  * (3) is the one that catches a problem six months from now, so it is kept
  * cheap: it is scoped to a date range and every column it touches is indexed.
  *
+ * That claim used to be false. Exactly ONE of eleven checks had a bounded
+ * variant, so the other ten scanned the whole table on every dashboard load —
+ * 3.4 seconds, warm, at 245 sales, for a result no page displayed. Every
+ * sales- or returns-scoped check now has a bounded form, and the dashboard
+ * SHOWS the outcome. A check whose result nobody sees is not a safeguard, it
+ * is just latency.
+ *
  * Each check returns `{ key, ok, count, detail }`. A check that cannot run —
  * a column not yet added, a table missing — returns ok:true with a `skipped`
  * note rather than failing; an absent feature is not corrupt data.
@@ -68,6 +75,10 @@ const CHECKS = [
     sql: () => `
       SELECT COUNT(*) AS n FROM sales
        WHERE discountMode = 'percent' AND (discountRate IS NULL OR discountRate <= 0)`,
+    bounded: () => `
+      SELECT COUNT(*) AS n FROM sales
+       WHERE discountMode = 'percent' AND (discountRate IS NULL OR discountRate <= 0)
+         AND createdAt >= :start AND createdAt < :end`,
     needs: ['sales.discountMode', 'sales.discountRate'],
   },
   {
@@ -76,12 +87,18 @@ const CHECKS = [
     sql: () => `
       SELECT COUNT(*) AS n FROM sales
        WHERE discountMode = 'flat' AND discountRate IS NOT NULL`,
+    bounded: () => `
+      SELECT COUNT(*) AS n FROM sales
+       WHERE discountMode = 'flat' AND discountRate IS NOT NULL
+         AND createdAt >= :start AND createdAt < :end`,
     needs: ['sales.discountMode', 'sales.discountRate'],
   },
   {
     key: 'discountWithinSubtotal',
     label: 'no discount exceeds the sale it was given on',
     sql: () => 'SELECT COUNT(*) AS n FROM sales WHERE discount > subtotal + ' + EPS,
+    bounded: () => `SELECT COUNT(*) AS n FROM sales
+       WHERE discount > subtotal + ${EPS} AND createdAt >= :start AND createdAt < :end`,
   },
   {
     key: 'saleTotalsAddUp',
@@ -89,6 +106,10 @@ const CHECKS = [
     sql: () => `
       SELECT COUNT(*) AS n FROM sales
        WHERE ABS(total - (subtotal - discount + tax)) > ${EPS}`,
+    bounded: () => `
+      SELECT COUNT(*) AS n FROM sales
+       WHERE ABS(total - (subtotal - discount + tax)) > ${EPS}
+         AND createdAt >= :start AND createdAt < :end`,
   },
   {
     // ── REDEFINED, deliberately ─────────────────────────────────────────────
@@ -111,6 +132,12 @@ const CHECKS = [
        WHERE ABS((s.paid + s.due
                   + COALESCE((SELECT SUM(r.appliedToDue) FROM returns r WHERE r.saleId = s.id), 0)
                  ) - s.total) > ${EPS}`,
+    bounded: () => `
+      SELECT COUNT(*) AS n FROM sales s
+       WHERE s.createdAt >= :start AND s.createdAt < :end
+         AND ABS((s.paid + s.due
+                  + COALESCE((SELECT SUM(r.appliedToDue) FROM returns r WHERE r.saleId = s.id), 0)
+                 ) - s.total) > ${EPS}`,
     needs: ['returns.appliedToDue'],
   },
   {
@@ -119,12 +146,18 @@ const CHECKS = [
     sql: () => `
       SELECT COUNT(*) AS n FROM returns
        WHERE appliedToDue > totalRefund + ${EPS} OR appliedToDue < -${EPS}`,
+    bounded: () => `
+      SELECT COUNT(*) AS n FROM returns
+       WHERE (appliedToDue > totalRefund + ${EPS} OR appliedToDue < -${EPS})
+         AND createdAt >= :start AND createdAt < :end`,
     needs: ['returns.appliedToDue'],
   },
   {
     key: 'noNegativeDue',
     label: 'no sale has been pushed into negative due by a return',
     sql: () => 'SELECT COUNT(*) AS n FROM sales WHERE due < -' + EPS,
+    bounded: () => `SELECT COUNT(*) AS n FROM sales
+       WHERE due < -${EPS} AND createdAt >= :start AND createdAt < :end`,
   },
   {
     key: 'refundsWithinSale',
@@ -133,6 +166,14 @@ const CHECKS = [
       SELECT COUNT(*) AS n FROM (
         SELECT s.id, s.total, COALESCE(SUM(r.totalRefund), 0) AS refunded
           FROM sales s JOIN returns r ON r.saleId = s.id
+         GROUP BY s.id, s.total
+        HAVING refunded > s.total + ${EPS}
+      ) x`,
+    bounded: () => `
+      SELECT COUNT(*) AS n FROM (
+        SELECT s.id, s.total, COALESCE(SUM(r.totalRefund), 0) AS refunded
+          FROM sales s JOIN returns r ON r.saleId = s.id
+         WHERE s.createdAt >= :start AND s.createdAt < :end
          GROUP BY s.id, s.total
         HAVING refunded > s.total + ${EPS}
       ) x`,

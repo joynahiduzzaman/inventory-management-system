@@ -157,6 +157,33 @@ export default function Dashboard({ darkMode, toggleDark }) {
       darkMode={darkMode}
       toggleDark={toggleDark}
     >
+      {/* The books disagreeing with themselves is the one thing on this screen
+          that needs acting on today, so it sits above everything and only
+          appears when it has something to say. The check was already running
+          on every dashboard load and reporting into a payload no page read —
+          three seconds spent on an invisible answer. It costs a fraction of
+          that now and it is finally visible. */}
+      {data?.integrity && data.integrity.ok === false && (
+        <div className="integrity-alert" role="alert">
+          <Icon name="warning" size={20} aria-hidden="true" />
+          <div className="integrity-body">
+            <div className="integrity-title">{t('dash.integrityFailed')}</div>
+            <div className="integrity-detail">
+              {/* The backend labels are English by nature — they describe an
+                  equation. Translate by check key where we have wording for it,
+                  and fall back to the raw label rather than printing a bare key
+                  at somebody who is trying to run a shop. */}
+              {data.integrity.problems.map((pr) => {
+                const k = `integrity.${pr.key}`;
+                const s2 = t(k);
+                return s2 === k ? pr.label : s2;
+              }).join(' · ')}
+            </div>
+            <div className="integrity-hint">{t('dash.integrityHint')}</div>
+          </div>
+        </div>
+      )}
+
       {/* ── What gets checked first ───────────────────────────────────────────
           Order is deliberate and comes from how a counter actually runs: how
           did today go, how much cash came in, what am I about to run out of,
