@@ -648,7 +648,19 @@ exports.generateReturnPDF = async (req, res) => {
     // ── Total block ──────────────────────────────────────────────────────────
     y += 6;
     const totalRefund = parseFloat(ret.totalRefund || 0);
-    totalBlock(doc, [
+    const settled     = parseFloat(ret.appliedToDue || 0);
+    const cashBack    = Math.round((totalRefund - settled) * 100) / 100;
+
+    // A refund against a credit sale does two things: it cancels debt and it
+    // hands over cash. The PDF showed only the total, so a customer holding it
+    // could not tell how much money they actually received — which is exactly
+    // the conversation this document exists to settle.
+    totalBlock(doc, settled > 0 ? [
+      { label: 'TOTAL REFUNDED',   value: fmtTaka(totalRefund), bold: true, large: true, bg: C.red_bg },
+      { label: 'Cleared from debt', value: fmtTaka(settled) },
+      { label: 'Cash handed back',  value: fmtTaka(cashBack), bold: true },
+      { label: 'Refund Method',     value: (ret.refundMethod || 'cash').toUpperCase() },
+    ] : [
       { label: 'TOTAL REFUNDED', value: fmtTaka(totalRefund), bold: true, large: true, bg: C.red_bg },
       { label: 'Refund Method',  value: (ret.refundMethod || 'cash').toUpperCase() },
     ], y);

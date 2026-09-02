@@ -459,6 +459,60 @@ indexed, so it is cheap enough to run on every load. On Vercel the API is a
 serverless function and `server.js` never runs, which is precisely why the check
 could not live at boot alone.
 
+## Known limitations
+
+Recorded here so the honest picture is on the record rather than only in
+somebody's memory. None of these is a bug; all of them are things a real shop
+would eventually hit.
+
+### No offline support — the one that matters
+
+There is no service worker, no offline queue, no local cache. **Every sale is a
+synchronous round trip to the server.** If the shop's connection drops, the till
+cannot sell.
+
+For a shop in Dhaka with intermittent connectivity this is the largest
+operational risk in the system, and it is larger than anything in the code.
+Solving it properly means an offline queue, conflict resolution on stock
+(two devices selling the last unit), and invoice numbering that does not depend
+on the server — a project, not a patch.
+
+**This would have to be solved before a real shop depended on this daily.**
+
+### Free-tier ceilings are unmeasured
+
+TiDB Serverless has request-unit quotas and Vercel Hobby has invocation limits.
+Neither has been measured against a real trading day's load. The application is
+well within both at demo scale; nobody has established where the ceiling is or
+what happens on the day it is reached.
+
+### The staff role has not been used in anger
+
+`users` carries `admin` and `staff` roles and the routes enforce them, but every
+hour of testing has been as admin. The staff path — what a non-admin can see,
+what they are correctly refused, whether the UI hides what the API blocks — has
+had no real exercise.
+
+### Payments are not individually logged
+
+See [Returns that settle debt](#returns-that-settle-debt). A payment is visible
+as the gap between an invoice's total and its due, not as a dated event.
+
+### Lists are capped rather than fully paginated
+
+`products`, `customers`, `returns` and `expenses` accept `?page`/`?limit` and
+return `{ data, pagination }`. Without those parameters they return a bare array
+as before — capped at 500 rows, with `truncated: true` and the real total when
+there are more. The POS loads the catalogue once and filters in the browser, so
+a shop with more than 500 active products needs the POS moved to server-side
+search before that cap is reached.
+
+### Hardware is unverified
+
+The scanning audit was driven by a simulated keyboard wedge and a stubbed
+camera. No physical scanner gun, phone camera or thermal printer has been
+tested. See the hardware checklist produced by the scan audit.
+
 ## Testing
 
 ```bash

@@ -2,6 +2,7 @@ const { Customer, Sale, SaleItem } = require('../models');
 const { Op } = require('sequelize');
 const V = require('../utils/validate');
 const { round2 } = require('../utils/money');
+const { paginate } = require('../utils/paginate');
 
 const parseCustomer = (body) => ({
   name:    V.reqString(body.name, 'Customer name', { max: 150 }),
@@ -24,8 +25,8 @@ exports.getAll = async (req, res) => {
     }
     if (dueOnly === 'true') where.dueAmount = { [Op.gt]: 0 };
 
-    const customers = await Customer.findAll({ where, order: [['name', 'ASC']] });
-    res.json({ success: true, data: customers });
+    const result = await paginate(Customer, { where, order: [['name', 'ASC']] }, req.query);
+    res.json({ success: true, ...result });
   } catch (err) {
     V.handle(res, err, 'Could not load customers');
   }

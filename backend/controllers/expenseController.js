@@ -1,6 +1,7 @@
 const { Expense, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const V = require('../utils/validate');
+const { paginate } = require('../utils/paginate');
 
 const parseExpense = (body) => ({
   title:    V.reqString(body.title, 'Title', { max: 200 }),
@@ -20,8 +21,8 @@ exports.getAll = async (req, res) => {
     if (category) where.category = category;
     if (search) where.title = { [Op.like]: `%${String(search).trim()}%` };
 
-    const expenses = await Expense.findAll({ where, order: [['date', 'DESC'], ['id', 'DESC']] });
-    res.json({ success: true, data: expenses });
+    const result = await paginate(Expense, { where, order: [['date', 'DESC'], ['id', 'DESC']] }, req.query);
+    res.json({ success: true, ...result });
   } catch (err) {
     V.handle(res, err, 'Could not load expenses');
   }

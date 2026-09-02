@@ -60,6 +60,68 @@ const esc = (v) => String(v == null ? '' : v)
  * History, say — the received/change lines are simply omitted rather than
  * invented.
  */
+/**
+ * The paper shell — fonts, page size, type scale, the print colour override.
+ *
+ * Extracted so the refund slip is physically the same document as the sale
+ * receipt: same width, same embedded Bengali face, same rules. Two copies of
+ * this would drift, and the first sign would be a refund slip printing Bengali
+ * as boxes on the one occasion it matters.
+ */
+function shellOpen(p, bn, title) {
+  return `<!DOCTYPE html>
+<html lang="${bn ? 'bn' : 'en'}">
+<head>
+<meta charset="utf-8"/>
+<title>${esc(title)}</title>
+<style>
+  /* Bengali must be embedded or the receipt prints as boxes. Same-origin, so
+     the hashed build URLs resolve inside the print window. */
+  @font-face { font-family:'Hind Siliguri'; font-style:normal; font-weight:400;
+               src:url('${bnRegular}') format('woff2'); }
+  @font-face { font-family:'Hind Siliguri'; font-style:normal; font-weight:700;
+               src:url('${bnBold}') format('woff2'); }
+
+  @page { size: ${p.page} auto; margin: 0; }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    width:${p.body};
+    padding:3mm 2mm;
+    background:#fff;
+    color:#000;
+    font-family:'Hind Siliguri', ui-monospace, 'Courier New', monospace;
+    font-size:${p.base}px;
+    line-height:1.45;
+    -webkit-font-smoothing:none;
+  }
+  .c{text-align:center} .r{text-align:right} .b{font-weight:700}
+  .shop{font-size:${p.name}px;font-weight:700;letter-spacing:.3px}
+  .muted{font-size:${p.base - 1}px;color:#000;opacity:.75}
+  .hr{border-top:1px dashed #000;margin:4px 0}
+  .hr2{border-top:1px solid #000;margin:4px 0}
+  .row{display:flex;justify-content:space-between;gap:6px;margin:1px 0}
+  .row>span:last-child{white-space:nowrap}
+  table{width:100%;border-collapse:collapse;margin:3px 0}
+  th{font-size:${p.base - 1}px;font-weight:700;border-bottom:1px solid #000;padding:2px 1px;text-align:left}
+  td{padding:2px 1px;vertical-align:top;border-bottom:1px dotted #999}
+  .it{margin:3px 0;border-bottom:1px dotted #999;padding-bottom:2px}
+  .it-name{font-weight:700}
+  .it-line{font-size:${p.base - 1}px}
+  .total{font-size:${p.total}px;font-weight:700;margin:3px 0}
+  .duebox{border:2px solid #000;padding:3px 5px;margin:4px 0;font-weight:700}
+  .thanks{margin-top:6px;font-size:${p.base}px;font-weight:700}
+  /* Thermal paper is black on white; never let a colour scheme invert it. */
+  @media print { body{-webkit-print-color-adjust:exact;print-color-adjust:exact} }
+</style>
+</head>
+<body>`;
+}
+
+const SHELL_CLOSE = `
+</body>
+</html>`;
+
 export function buildReceiptHtml(inv, { width = 80, t, money, lang = 'bn', cashier = '', tendered = null } = {}) {
   const p = PAPER[width] || PAPER[80];
   const bn = lang === 'bn';
@@ -106,53 +168,7 @@ export function buildReceiptHtml(inv, { width = 80, t, money, lang = 'bn', cashi
   const line = (label, value, cls = '') =>
     `<div class="row ${cls}"><span>${esc(label)}</span><span>${esc(value)}</span></div>`;
 
-  return `<!DOCTYPE html>
-<html lang="${bn ? 'bn' : 'en'}">
-<head>
-<meta charset="utf-8"/>
-<title>${esc(inv.invoiceNo || '')}</title>
-<style>
-  /* Bengali must be embedded or the receipt prints as boxes. Same-origin, so
-     the hashed build URLs resolve inside the print window. */
-  @font-face { font-family:'Hind Siliguri'; font-style:normal; font-weight:400;
-               src:url('${bnRegular}') format('woff2'); }
-  @font-face { font-family:'Hind Siliguri'; font-style:normal; font-weight:700;
-               src:url('${bnBold}') format('woff2'); }
-
-  @page { size: ${p.page} auto; margin: 0; }
-
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body {
-    width:${p.body};
-    padding:3mm 2mm;
-    background:#fff;
-    color:#000;
-    font-family:'Hind Siliguri', ui-monospace, 'Courier New', monospace;
-    font-size:${p.base}px;
-    line-height:1.45;
-    -webkit-font-smoothing:none;
-  }
-  .c{text-align:center} .r{text-align:right} .b{font-weight:700}
-  .shop{font-size:${p.name}px;font-weight:700;letter-spacing:.3px}
-  .muted{font-size:${p.base - 1}px;color:#000;opacity:.75}
-  .hr{border-top:1px dashed #000;margin:4px 0}
-  .hr2{border-top:1px solid #000;margin:4px 0}
-  .row{display:flex;justify-content:space-between;gap:6px;margin:1px 0}
-  .row>span:last-child{white-space:nowrap}
-  table{width:100%;border-collapse:collapse;margin:3px 0}
-  th{font-size:${p.base - 1}px;font-weight:700;border-bottom:1px solid #000;padding:2px 1px;text-align:left}
-  td{padding:2px 1px;vertical-align:top;border-bottom:1px dotted #999}
-  .it{margin:3px 0;border-bottom:1px dotted #999;padding-bottom:2px}
-  .it-name{font-weight:700}
-  .it-line{font-size:${p.base - 1}px}
-  .total{font-size:${p.total}px;font-weight:700;margin:3px 0}
-  .duebox{border:2px solid #000;padding:3px 5px;margin:4px 0;font-weight:700}
-  .thanks{margin-top:6px;font-size:${p.base}px;font-weight:700}
-  /* Thermal paper is black on white; never let a colour scheme invert it. */
-  @media print { body{-webkit-print-color-adjust:exact;print-color-adjust:exact} }
-</style>
-</head>
-<body>
+  return shellOpen(p, bn, inv.invoiceNo || '') + `
   <div class="c">
     <div class="shop">${esc(bn ? SHOP.nameBn : SHOP.name)}</div>
     <div class="muted">${esc(bn ? SHOP.addressBn : SHOP.address)}</div>
@@ -184,9 +200,98 @@ export function buildReceiptHtml(inv, { width = 80, t, money, lang = 'bn', cashi
   <div class="hr"></div>
   <div class="c thanks">${esc(t('receipt.thankYou'))}</div>
   <div class="c muted">${esc(t('receipt.noExchange'))}</div>
+  <div class="hr"></div>` + SHELL_CLOSE;
+}
+
+/**
+ * A refund slip.
+ *
+ * There was no printed record of a return at all — the split showed on screen
+ * and the customer walked out with nothing. A refund that settles a debt and
+ * hands back cash does two things at once, and a customer who cannot see which
+ * was which has only the shopkeeper's word for it. That is a dispute waiting
+ * to happen, so the split is the point of this document, not a detail on it.
+ */
+export function buildReturnReceiptHtml(ret, { width = 80, t, money, lang = 'bn', cashier = '' } = {}) {
+  const p = PAPER[width] || PAPER[80];
+  const bn = lang === 'bn';
+
+  const when = new Date(ret.createdAt || Date.now());
+  const date = when.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const time = when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  const items = Array.isArray(ret.items) ? ret.items : [];
+  const total = Number(ret.totalRefund || 0);
+  const settled = Number(ret.appliedToDue || 0);
+  const cash = ret.cashRefund != null ? Number(ret.cashRefund) : Math.max(0, total - settled);
+
+  const line = (label, value, cls = '') =>
+    `<div class="row ${cls}"><span>${esc(label)}</span><span>${esc(value)}</span></div>`;
+
+  const itemRows = p.compact
+    ? items.map((it) => `
+        <div class="it">
+          <div class="it-name">${esc(it.productName)}</div>
+          <div class="row it-line">
+            <span>${esc(it.quantity)} × ${esc(money(it.price))}</span>
+            <span class="b">${esc(money(it.refundTotal))}</span>
+          </div>
+        </div>`).join('')
+    : `<table>
+         <thead><tr>
+           <th>${esc(t('receipt.item'))}</th>
+           <th class="c">${esc(t('receipt.qty'))}</th>
+           <th class="r">${esc(t('receipt.price'))}</th>
+           <th class="r">${esc(t('receipt.amount'))}</th>
+         </tr></thead>
+         <tbody>${items.map((it) => `
+           <tr>
+             <td>${esc(it.productName)}</td>
+             <td class="c">${esc(it.quantity)}</td>
+             <td class="r">${esc(money(it.price))}</td>
+             <td class="r">${esc(money(it.refundTotal))}</td>
+           </tr>`).join('')}
+         </tbody>
+       </table>`;
+
+  return shellOpen(p, bn, ret.returnNo || '') + `
+  <div class="c">
+    <div class="shop">${esc(bn ? SHOP.nameBn : SHOP.name)}</div>
+    <div class="muted">${esc(bn ? SHOP.addressBn : SHOP.address)}</div>
+    ${SHOP.phone ? `<div class="muted">${esc(SHOP.phone)}</div>` : ''}
+  </div>
+
   <div class="hr"></div>
-</body>
-</html>`;
+  <div class="c thanks">${esc(t('receipt.returnTitle'))}</div>
+  <div class="hr"></div>
+
+  ${line(t('receipt.returnNo'), ret.returnNo || '')}
+  ${ret.sale && ret.sale.invoiceNo ? line(t('receipt.againstInvoice'), ret.sale.invoiceNo) : ''}
+  ${line(t('receipt.date'), `${date} ${time}`)}
+  ${cashier ? line(t('receipt.cashier'), cashier) : ''}
+  ${line(t('receipt.customer'), (ret.customer && ret.customer.name) || t('pos.walkInCustomer'))}
+
+  <div class="hr"></div>
+  ${itemRows}
+
+  <div class="hr2"></div>
+  <div class="row total"><span>${esc(t('returns.totalRefunded'))}</span><span>${esc(money(total))}</span></div>
+
+  ${settled > 0 ? `
+    ${line(t('returns.settledDebt'), money(settled), 'b')}
+    <div class="row duebox"><span>${esc(t('returns.cashHandedBack'))}</span><span>${esc(money(cash))}</span></div>
+  ` : line(t('returns.refundVia'), t(`pos.payment.${ret.refundMethod || 'cash'}`))}
+
+  ${ret.reason ? line(t('returns.reason'), ret.reason) : ''}
+
+  <div class="hr"></div>
+  <div class="c muted">${esc(t('receipt.returnFooter'))}</div>
+  <div class="hr"></div>` + SHELL_CLOSE;
+}
+
+/** Print a refund slip. Same window handling as a sale receipt. */
+export function printReturnReceipt(ret, opts = {}) {
+  return printHtml(buildReturnReceiptHtml(ret, opts));
 }
 
 /**
@@ -196,7 +301,11 @@ export function buildReceiptHtml(inv, { width = 80, t, money, lang = 'bn', cashi
  * than leaving the cashier waiting for a printer that was never asked.
  */
 export function printReceipt(inv, opts = {}) {
-  const html = buildReceiptHtml(inv, opts);
+  return printHtml(buildReceiptHtml(inv, opts));
+}
+
+/** Opens a document in its own window and prints it. */
+function printHtml(html) {
   const win = window.open('', '_blank', 'width=380,height=640');
   if (!win) return false;
 

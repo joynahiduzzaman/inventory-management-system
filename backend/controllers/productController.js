@@ -4,6 +4,7 @@ const path = require('path');
 const V    = require('../utils/validate');
 const { storedName } = require('../middleware/upload');
 const CDN = require('../config/cloudinary');
+const { paginate } = require('../utils/paginate');
 
 const INCLUDE_REFS = [
   { model: Category, as: 'category', attributes: ['id', 'name'] },
@@ -102,12 +103,12 @@ exports.getAll = async (req, res) => {
     if (stockStatus === 'low')      where.stock = { [Op.gt]: 0, [Op.lte]: sequelize.col('lowStockAlert') };
     if (stockStatus === 'in')       where.stock = { [Op.gt]: 0 };
 
-    const products = await Product.findAll({
+    const result = await paginate(Product, {
       where,
       include: INCLUDE_REFS,
       order: [['name', 'ASC']],
-    });
-    res.json({ success: true, data: products });
+    }, req.query);
+    res.json({ success: true, ...result });
   } catch (err) {
     V.handle(res, err, 'Could not load products');
   }

@@ -4,6 +4,7 @@ import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { pdfUrl } from '../utils/config';
 import { useT } from '../i18n';
+import { printReturnReceipt, saveReceiptWidth } from '../utils/receipt';
 
 const fmt  = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0).toFixed(0));
 
@@ -26,6 +27,27 @@ const REFUND_METHODS = [
 
 export default function Returns({ darkMode, toggleDark }) {
   const { t } = useT();
+  const { money, lang } = useT();
+
+  /**
+   * Print a refund slip on the shop's thermal printer.
+   *
+   * Until now a return produced an A4 PDF and nothing else, so the customer
+   * walked away from the counter with no paper — and on a credit sale, no
+   * record of how much of the refund cleared their debt versus how much they
+   * were handed. That is a dispute waiting to happen.
+   */
+  const printReturnSlip = (width, record = null) => {
+    const data = record || successData;
+    if (!data) return;
+    saveReceiptWidth(width);
+    const ok = printReturnReceipt(data, {
+      width, t, money, lang,
+      cashier: (JSON.parse(localStorage.getItem('user') || 'null') || {}).name || '',
+    });
+    if (!ok) toast.error(t('error.allowPopups'));
+  };
+
   const [returns,    setReturns]    = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [dateFrom,   setDateFrom]   = useState('');
@@ -535,12 +557,19 @@ export default function Returns({ darkMode, toggleDark }) {
                 )}
                 {wizardStep === 4 && (
                   <>
+                    {/* The thermal path, same as a sale: a shop has one
+                        printer and it is 58mm or 80mm. The A4 PDF stays for
+                        filing and for emailing a customer who asks. */}
+                    <button className="btn btn-outline"
+                            onClick={() => printReturnSlip(58)}>58mm</button>
+                    <button className="btn btn-outline"
+                            onClick={() => printReturnSlip(80)}>80mm</button>
                     <button
                       className="btn btn-outline"
                       onClick={() => {
                         window.open(pdfUrl(`return/${successData?.id}`, { print: 1 }), '_blank');
                       }}
-                    >🖨️ Print Receipt</button>
+                    >PDF</button>
                     <button className="btn btn-primary" onClick={openWizard}>🔄 New Return</button>
                     <button className="btn btn-outline" onClick={closeWizard}>Close</button>
                   </>
@@ -603,12 +632,19 @@ export default function Returns({ darkMode, toggleDark }) {
               </div>
             </div>
             <div className="modal-footer">
+              {/* Reprint. A customer comes back a week later with a question and
+                  the shopkeeper needs the slip again — at the till's own paper
+                  width, not as an A4 PDF. */}
+              <button className="btn btn-outline" id="ret-reprint-58"
+                      onClick={() => printReturnSlip(58, selected)}>58mm</button>
+              <button className="btn btn-outline" id="ret-reprint-80"
+                      onClick={() => printReturnSlip(80, selected)}>80mm</button>
               <button
                 className="btn btn-outline"
                 onClick={() => {
                   window.open(pdfUrl(`return/${selected?.id}`, { print: 1 }), '_blank');
                 }}
-              >🖨️ Print</button>
+              >PDF</button>
               <button className="btn btn-primary" onClick={() => setSelected(null)}>Close</button>
             </div>
           </div>

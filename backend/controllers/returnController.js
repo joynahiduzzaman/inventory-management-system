@@ -2,6 +2,7 @@ const { Return, ReturnItem, Sale, SaleItem, Product, Customer, User, StockMoveme
 const { Op } = require('sequelize');
 const V = require('../utils/validate');
 const { round2 } = require('../utils/money');
+const { paginate } = require('../utils/paginate');
 
 const generateReturnNo = () => {
   const d    = new Date();
@@ -19,7 +20,7 @@ exports.getAll = async (req, res) => {
     const where = {};
     if (from && to) where.createdAt = { [Op.between]: [new Date(from + 'T00:00:00'), new Date(to + 'T23:59:59')] };
 
-    const returns = await Return.findAll({
+    const result = await paginate(Return, {
       where,
       include: [
         { model: Sale,     as: 'sale',     attributes: ['id', 'invoiceNo'] },
@@ -28,8 +29,8 @@ exports.getAll = async (req, res) => {
         { model: ReturnItem, as: 'items' }
       ],
       order: [['createdAt', 'DESC']]
-    });
-    res.json({ success: true, data: returns });
+    }, req.query);
+    res.json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
