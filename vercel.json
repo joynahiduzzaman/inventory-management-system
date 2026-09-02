@@ -4,7 +4,6 @@
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/build",
   "framework": "create-react-app",
-  "//regions": "The database is TiDB Serverless in ap-southeast-1 (Singapore). Functions defaulted to iad1 (US East), so every query crossed the Pacific twice — measured 4.0s on the dashboard and 3.4s on the integrity scan, warm, at 245 sales. Pinning sin1 puts the code next to the data it reads, and next to the shop.",
   "regions": ["sin1"],
   "functions": {
     "api/index.js": {

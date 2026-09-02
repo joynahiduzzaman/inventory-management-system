@@ -33,6 +33,32 @@ from Cloudinary's CDN — neither the API nor the database is in that path. That
 keeps the free database tier's ~1 GB for inventory data, and stops a catalogue
 page from turning into dozens of database round trips.
 
+## Function region
+
+`vercel.json` pins `"regions": ["sin1"]` (Singapore).
+
+This is not cosmetic. The database is TiDB Serverless in `ap-southeast-1`
+(Singapore) and the shop is in Dhaka, but functions default to `iad1`
+(US East) — so every query crossed the Pacific and came back, once per query,
+and a request making six queries paid that six times. Measured warm against
+production at 245 sales, medians of five samples:
+
+| Endpoint | iad1 (before) |
+|---|---:|
+| `/reports/dashboard` | 4023ms |
+| `/health/integrity` | 3434ms |
+| `/sales` | 982ms |
+| `/products` | 711ms |
+
+`x-vercel-id` read `bom1::iad1` — edge in Mumbai, execution in Virginia.
+
+**If you ever move the database, move this too.** The rule is simply that the
+function should run in the same region as the data it reads.
+
+Note: `vercel.json` is strict JSON validated against a schema that rejects
+unknown properties, so it cannot carry comments — not even a `"//"` key. A
+build that fails immediately with no useful log is usually that.
+
 ## Deploying from Git (schema first)
 
 Vercel builds this project from the repository. The API is a serverless
