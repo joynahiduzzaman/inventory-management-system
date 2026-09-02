@@ -8,6 +8,9 @@ const Return = sequelize.define('Return', {
   customerId:   { type: DataTypes.INTEGER, allowNull: true },
   userId:       { type: DataTypes.INTEGER, allowNull: true },
   totalRefund:  { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  // How much of totalRefund cancelled debt instead of being handed over as
+  // cash. The rest (totalRefund - appliedToDue) left the till.
+  appliedToDue: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
   refundMethod: {
     type: DataTypes.ENUM('cash','bkash','nagad','card','store_credit'),
     defaultValue: 'cash'

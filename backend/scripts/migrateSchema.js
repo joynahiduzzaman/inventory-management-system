@@ -41,6 +41,7 @@ const CHECK_ONLY = process.argv.includes('--check');
 const EXPECTED = [
   { table: 'sales', column: 'discountMode' },
   { table: 'sales', column: 'discountRate' },
+  { table: 'returns', column: 'appliedToDue' },
 ];
 
 (async () => {
@@ -107,12 +108,12 @@ const EXPECTED = [
   const idx = await ensureIndexes(db);
 
   const after = await db.query(
-    `SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'sales'`,
+    `SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = :db`,
     { type: db.QueryTypes.SELECT, replacements: { db: db.config.database } }
   );
-  const now = new Set(after.map((r) => r.c));
-  const stillMissing = EXPECTED.filter((e) => e.table === 'sales' && !now.has(e.column));
+  const now = new Set(after.map((r) => `${r.t}.${r.c}`));
+  const stillMissing = EXPECTED.filter((e) => !now.has(`${e.table}.${e.column}`));
 
   console.log(`\n  columns added: ${added}`);
   console.log(`  indexes added: ${idx}`);
@@ -130,6 +131,11 @@ const EXPECTED = [
     { type: db.QueryTypes.SELECT }
   );
   console.log(`  existing rows defaulted to discountMode='flat': ${flat}`);
+  const [{ n: zeroApplied }] = await db.query(
+    'SELECT COUNT(*) AS n FROM returns WHERE appliedToDue = 0',
+    { type: db.QueryTypes.SELECT }
+  );
+  console.log(`  existing returns defaulted to appliedToDue=0:    ${zeroApplied}`);
   console.log('\n✅ Schema is up to date. Safe to deploy the code that needs it.');
   await db.close();
   process.exit(0);

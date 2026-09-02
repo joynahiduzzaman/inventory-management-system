@@ -268,6 +268,79 @@ exports.collectDue = async (req, res) => {
 };
 
 /** The customer's unpaid invoices, oldest first — what a payment would settle. */
+/**
+ * A customer's balance history, as events rather than as a number.
+ *
+ * "Ramiz owes ৳0" is not an answer to "why did Ramiz stop owing ৳30". Without
+ * this, a return that settles a debt shows up as an unexplained drop in the
+ * balance, and next month nobody can reconstruct what happened.
+ *
+ * Two kinds of event exist in the data:
+ *   - a credit sale, which created debt
+ *   - a return that settled some of it (returns.appliedToDue > 0)
+ *
+ * Individual PAYMENTS cannot be listed: there is no payments table — the ledger
+ * is sales.paid/sales.due itself, so a payment is visible only as the gap
+ * between a sale's total and its due. That is a pre-existing limitation, called
+ * out in the response as `paymentsItemised: false` rather than papered over
+ * with a guess.
+ */
+exports.getHistory = async (req, res) => {
+  // Required here rather than at module scope, matching collectDue below.
+  const { sequelize } = require('../models');
+  try {
+    const customer = await Customer.findByPk(req.params.id);
+    if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
+
+    const sales = await Sale.findAll({
+      where: { customerId: customer.id },
+      order: [['createdAt', 'ASC'], ['id', 'ASC']],
+      attributes: ['id', 'invoiceNo', 'total', 'paid', 'due', 'createdAt'],
+    });
+
+    const settlements = await sequelize.query(
+      `SELECT r.id, r.returnNo, r.appliedToDue, r.totalRefund, r.createdAt, s.invoiceNo
+         FROM returns r JOIN sales s ON s.id = r.saleId
+        WHERE r.customerId = :customerId AND r.appliedToDue > 0
+        ORDER BY r.createdAt ASC`,
+      { type: sequelize.QueryTypes.SELECT, replacements: { customerId: customer.id } }
+    );
+
+    const events = [
+      ...sales.map((s) => ({
+        type: 'sale',
+        at: s.createdAt,
+        ref: s.invoiceNo,
+        amount: round2(parseFloat(s.total || 0)),
+        stillOwed: round2(parseFloat(s.due || 0)),
+      })),
+      ...settlements.map((r) => ({
+        type: 'return_settlement',
+        at: r.createdAt,
+        ref: r.returnNo,
+        againstInvoice: r.invoiceNo,
+        // What this event did to the balance, and what was handed back.
+        amount: round2(parseFloat(r.appliedToDue || 0)),
+        cashReturned: round2(parseFloat(r.totalRefund || 0) - parseFloat(r.appliedToDue || 0)),
+      })),
+    ].sort((a, b) => new Date(a.at) - new Date(b.at));
+
+    res.json({
+      success: true,
+      data: {
+        customerId: customer.id,
+        customerName: customer.name,
+        outstanding: round2(sales.reduce((n, s) => n + parseFloat(s.due || 0), 0)),
+        cachedBalance: round2(parseFloat(customer.dueAmount || 0)),
+        paymentsItemised: false,
+        events,
+      },
+    });
+  } catch (err) {
+    V.handle(res, err, 'Could not load the balance history');
+  }
+};
+
 exports.getDue = async (req, res) => {
   try {
     const customer = await Customer.findByPk(req.params.id);

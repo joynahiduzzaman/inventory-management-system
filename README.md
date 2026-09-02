@@ -140,7 +140,7 @@ source.
 | **Products** | Full CRUD with images, barcode generation and label printing, search by name/SKU/barcode, category and low-stock filters, pagination |
 | **Stock & History** | Inventory valuation at cost and retail, out/low-stock views, CSV export, and the full stock movement ledger |
 | **Sales** | Paginated history with server-side totals, date/payment/unpaid filters, due collection, invoice and voucher PDFs |
-| **Returns** | Partial returns against an invoice with optional restocking; refunds recorded in a ledger, invoices never rewritten |
+| **Returns** | Partial returns against an invoice with optional restocking; refunds recorded in a ledger. A refund on a credit sale settles what is owed before any cash is handed back |
 | **Customers** | Contacts, purchase history, outstanding balances |
 | **Suppliers** | Directory with product counts |
 | **Expenses** | Categorised expense tracking that feeds net profit |
@@ -182,6 +182,43 @@ netProfit    = grossProfit − expenses
 `sales.total` is set once at sale time and is never rewritten. Returns are
 subtracted at query time from the return ledger, which is the single source of
 truth for refunds. All date boundaries use BST (UTC+6).
+
+### What is frozen on an invoice, and what is not
+
+This distinction was previously stated as "invoices are never rewritten after a
+return", which was misleading — `collectDue` has always mutated `paid` and
+`due`.
+
+| Field | After the sale |
+|---|---|
+| `total`, `subtotal`, `discount`, `discountMode`, `discountRate`, `tax` | **Frozen.** The invoice as agreed. |
+| `paid` | Moves only when cash is received. Reported as `collected`. |
+| `due` | Moves when a payment is collected, **and** when a refund settles a debt. |
+
+### Returns that settle debt
+
+A customer who bought on credit and returns the goods should stop owing for
+them. So a refund clears what is outstanding on that invoice first, and only
+the remainder leaves the till:
+
+```
+appliedToDue = min(totalRefund, sale.due)      -- recorded on the return
+cashRefund   = totalRefund - appliedToDue      -- derived, never stored
+```
+
+A ৳100 sale with ৳70 paid and ৳30 owing, returned in full, cancels the ৳30 and
+hands back ৳70. Both halves are shown on the return record and in the
+customer's balance history, because a return that silently does two things is
+where an argument with a customer starts.
+
+`paid` is deliberately **not** increased to absorb the settlement. It is the
+cash-taken figure `collected` reports, and inflating it to preserve the old
+`paid + due == total` equation would have corrupted the one number the
+shopkeeper reads every morning. The invariant changed instead — see
+[Data integrity](#data-integrity).
+
+Lock order is **sales, then customer**, identical to `collectDue`. Taking them
+in the other order deadlocks a return against a payment for the same customer.
 
 ---
 
@@ -361,9 +398,34 @@ to short-lived single-use download tokens would remove this.
 
 `backend/config/dataIntegrity.js` holds the checks that must be true forever and
 that normal use would never reveal: percentage discounts matching their stored
-rate, totals equalling subtotal − discount + tax, paid + due equalling total, no
-sale refunded beyond its value, no negative stock, cached customer balances
-matching their unpaid invoices.
+rate, totals equalling subtotal − discount + tax, no sale refunded beyond its
+value, no negative stock or negative due, no return settling more debt than it
+refunded, and cached customer balances matching their unpaid invoices.
+
+### One invariant was deliberately redefined
+
+```
+was:  paid + due == total
+now:  paid + due + SUM(returns.appliedToDue for that sale) == total
+```
+
+When a refund began settling debt, `due` started falling without `paid` rising,
+and the old equation stopped being true. The alternative — inflating `paid` to
+preserve it — was rejected: `paid` is the cash-taken figure `collected`
+reports, so that would have traded a correct report for a tidy equation.
+
+The new form is stronger, not weaker. There are three ways money leaves an
+invoice — cash received, still owed, and debt cancelled by a return — and the
+equation now names all three instead of pretending there are two.
+
+**Old rows are unaffected.** `appliedToDue` defaults to 0, so the sum term
+vanishes and the assertion reduces to exactly the previous equation. No
+backfill was needed: at the time of the change, production held 245 sales and
+3 returns, and none of those returns was against a sale with anything
+outstanding.
+
+A database that predates the column is still checked, in its old form, rather
+than being reported clean because a check could not run.
 
 A test suite catches drift the day someone runs it. These run:
 

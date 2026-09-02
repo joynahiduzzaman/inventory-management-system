@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { pdfUrl } from '../utils/config';
+import { useT } from '../i18n';
 
 const fmt  = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0).toFixed(0));
 
@@ -24,6 +25,7 @@ const REFUND_METHODS = [
 ];
 
 export default function Returns({ darkMode, toggleDark }) {
+  const { t } = useT();
   const [returns,    setReturns]    = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [dateFrom,   setDateFrom]   = useState('');
@@ -466,12 +468,32 @@ export default function Returns({ darkMode, toggleDark }) {
                         <span style={{ fontWeight: '700', color: '#ef4444' }}>-৳{fmt(item.refundTotal)}</span>
                       </div>
                     ))}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0', borderTop: '1px solid var(--border)', marginTop: '6px' }}>
-                      <span style={{ fontWeight: '800', fontSize: '15px' }}>Total Refunded</span>
-                      <span style={{ fontWeight: '900', fontSize: '18px', color: '#ef4444' }}>৳{fmt(successData.totalRefund)}</span>
+                    <div className="ret-total-row">
+                      <span className="ret-total-label">{t('returns.totalRefunded')}</span>
+                      <span className="ret-total-value num">৳{fmt(successData.totalRefund)}</span>
                     </div>
+                    {/* A refund on a credit sale does two things at once: it
+                        cancels debt and it hands over cash. A shopkeeper who
+                        cannot see the split cannot explain it to the customer,
+                        and that is where an argument starts. */}
+                    {Number(successData.appliedToDue) > 0 && (
+                      <div className="ret-split">
+                        <div className="ret-split-row">
+                          <span>{t('returns.settledDebt')}</span>
+                          <span className="num">৳{fmt(successData.appliedToDue)}</span>
+                        </div>
+                        <div className="ret-split-row is-cash">
+                          <span>{t('returns.cashHandedBack')}</span>
+                          <span className="num">৳{fmt(
+                            successData.cashRefund != null
+                              ? successData.cashRefund
+                              : Number(successData.totalRefund) - Number(successData.appliedToDue)
+                          )}</span>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      <span>Refund via</span>
+                      <span>{t('returns.refundVia')}</span>
                       <span style={{ fontWeight: '700' }}>{methodLabel(successData.refundMethod)}</span>
                     </div>
                   </div>

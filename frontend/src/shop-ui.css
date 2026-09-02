@@ -2056,3 +2056,30 @@ kbd {
   .header-actions { flex: 1 1 100%; justify-content: flex-start; flex-wrap: wrap; }
   .header-sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 }
+
+/* ── Return: the debt/cash split ──────────────────────────────────────────
+   A refund against a credit sale does two things at once. Showing only the
+   total leaves the shopkeeper unable to explain to the customer why they got
+   less cash than the goods were worth. */
+.ret-total-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding-top: var(--space-3); margin-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.ret-total-label { font-size: var(--text-base); font-weight: var(--weight-bold); }
+.ret-total-value { font-size: var(--text-lg); font-weight: var(--weight-bold); letter-spacing: -0.02em; }
+.ret-split {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+}
+.ret-split-row {
+  display: flex; justify-content: space-between; gap: var(--space-3);
+  font-size: var(--text-sm); font-weight: var(--weight-semi);
+  color: var(--text-secondary);
+}
+.ret-split-row + .ret-split-row { margin-top: 3px; }
+.ret-split-row.is-cash { color: var(--text-primary); }

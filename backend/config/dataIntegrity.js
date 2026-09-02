@@ -91,11 +91,40 @@ const CHECKS = [
        WHERE ABS(total - (subtotal - discount + tax)) > ${EPS}`,
   },
   {
+    // ── REDEFINED, deliberately ─────────────────────────────────────────────
+    //
+    // was:  paid + due == total
+    // now:  paid + due + (refunds applied to that sale's due) == total
+    //
+    // A refund on a credit sale now settles what is owed before any cash is
+    // handed over, so `due` falls without `paid` rising. The old equation
+    // described a world with two ways for money to leave an invoice; there are
+    // three. Inflating `paid` to preserve the old form was rejected because
+    // `paid` is what `collected` reports as cash taken.
+    //
+    // Old rows are unaffected: appliedToDue defaults to 0, so the sum term
+    // vanishes and the assertion reduces to exactly the previous equation.
     key: 'paidPlusDue',
-    label: 'paid plus due equals the total on every sale',
+    label: 'paid + due + refunds-applied-to-due equals the total on every sale',
     sql: () => `
-      SELECT COUNT(*) AS n FROM sales
-       WHERE ABS((paid + due) - total) > ${EPS}`,
+      SELECT COUNT(*) AS n FROM sales s
+       WHERE ABS((s.paid + s.due
+                  + COALESCE((SELECT SUM(r.appliedToDue) FROM returns r WHERE r.saleId = s.id), 0)
+                 ) - s.total) > ${EPS}`,
+    needs: ['returns.appliedToDue'],
+  },
+  {
+    key: 'appliedNeverExceedsRefund',
+    label: 'no return settled more debt than it refunded',
+    sql: () => `
+      SELECT COUNT(*) AS n FROM returns
+       WHERE appliedToDue > totalRefund + ${EPS} OR appliedToDue < -${EPS}`,
+    needs: ['returns.appliedToDue'],
+  },
+  {
+    key: 'noNegativeDue',
+    label: 'no sale has been pushed into negative due by a return',
+    sql: () => 'SELECT COUNT(*) AS n FROM sales WHERE due < -' + EPS,
   },
   {
     key: 'refundsWithinSale',
@@ -150,6 +179,19 @@ async function checkDataIntegrity(sequelize, { range = null } = {}) {
 
   for (const check of CHECKS) {
     if (check.needs && !check.needs.every((c) => have.has(c))) {
+      // paidPlusDue is the one check that must never be skipped: before the
+      // column exists the OLD equation is the correct one, so fall back to it
+      // rather than reporting a clean bill of health on an unchecked table.
+      if (check.key === 'paidPlusDue') {
+        const [row] = await sequelize.query(
+          `SELECT COUNT(*) AS n FROM sales WHERE ABS((paid + due) - total) > ${EPS}`,
+          { type: QueryTypes.SELECT }
+        );
+        const count = Number(row?.n ?? 0);
+        findings.push({ key: check.key, label: 'paid + due equals the total (pre-appliedToDue form)',
+          ok: count === 0, count, scope: 'all' });
+        continue;
+      }
       findings.push({ key: check.key, label: check.label, ok: true, count: 0, skipped: 'column not present yet' });
       continue;
     }

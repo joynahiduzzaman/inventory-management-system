@@ -151,9 +151,15 @@ exports.createReturn = async (req, res) => {
     // before, and folding it in now would change every undiscounted return
     // too — a separate decision, not this one.
     //
-    // Invoice totals are NEVER modified after a return — the return ledger
-    // records the refund and all net calculations (revenue, profit) are
-    // derived at query time by subtracting returns from gross sales.
+    // What is frozen after a sale, and what is not:
+    //
+    //   frozen   total, subtotal, discount, tax — the invoice as agreed
+    //   mutable  paid, due — payment state, which collectDue has always moved
+    //
+    // The old comment here said "invoice totals are NEVER modified", which was
+    // misleading: collectDue mutates paid and due on every payment. Only the
+    // agreed amounts are immutable. A refund settling a debt moves `due` for
+    // the same reason a payment does — the customer no longer owes it.
     const saleSubtotal = parseFloat(sale.subtotal) || 0;
     const saleDiscount = parseFloat(sale.discount) || 0;
     // Nothing was charged, so nothing was discounted — and dividing by zero
@@ -258,6 +264,51 @@ exports.createReturn = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No valid items to return' });
     }
 
+    // ── Settle the debt before handing back cash ─────────────────────────
+    //
+    // A customer who bought on credit and returns the goods should stop owing
+    // for them. Previously the refund was recorded in the return ledger and
+    // the balance beside their name did not move — defensible accounting and
+    // indefensible at a counter, where the shopkeeper is holding the goods and
+    // the book still says the customer owes.
+    //
+    // So: the refund clears what is outstanding on THIS invoice first, and only
+    // the remainder is money out of the till. A ৳100 sale with ৳70 paid and
+    // ৳30 owing, returned in full, cancels the ৳30 and hands back ৳70.
+    //
+    // Lock order is SALES THEN CUSTOMER, matching collectDue exactly. Taking
+    // them in the other order would deadlock a return against a payment for
+    // the same customer. The due is re-read under the lock rather than trusted
+    // from the sale loaded at the top of this request, because a payment may
+    // have landed in between.
+    let appliedToDue = 0;
+    if (sale.customerId) {
+      const [{ currentDue }] = await sequelize.query(
+        'SELECT due AS currentDue FROM sales WHERE id = :saleId FOR UPDATE',
+        { type: sequelize.QueryTypes.SELECT, replacements: { saleId }, transaction: t }
+      );
+      const owed = round2(parseFloat(currentDue || 0));
+      appliedToDue = round2(Math.min(totalRefund, Math.max(0, owed)));
+
+      if (appliedToDue > 0) {
+        await sequelize.query(
+          'UPDATE sales SET due = :newDue WHERE id = :saleId',
+          { replacements: { newDue: round2(owed - appliedToDue), saleId }, transaction: t }
+        );
+        const customer = await Customer.findByPk(sale.customerId, {
+          transaction: t, lock: t.LOCK.UPDATE,
+        });
+        if (customer) {
+          await customer.update(
+            { dueAmount: round2(Math.max(0, parseFloat(customer.dueAmount || 0) - appliedToDue)) },
+            { transaction: t }
+          );
+        }
+      }
+    }
+    // What actually leaves the till. The receipt shows both halves.
+    const cashRefund = round2(totalRefund - appliedToDue);
+
     // Create return record
     const now = new Date();
     const ret = await Return.create({
@@ -266,6 +317,7 @@ exports.createReturn = async (req, res) => {
       customerId:   sale.customerId || null,
       userId:       req.user.id,
       totalRefund,
+      appliedToDue,
       refundMethod: refundMethod || 'cash',
       reason,
       note,
@@ -288,10 +340,15 @@ exports.createReturn = async (req, res) => {
       });
     }
 
-    // ── Invoice totals (total/paid/due) are NEVER modified after a return ────
-    // All net revenue and profit figures are computed at query time by the
-    // reportController using: Net Revenue = SUM(sales.total) - SUM(returns.totalRefund)
-    // The return ledger (returns + return_items tables) is the single source of truth.
+    // ── What a return touches ───────────────────────────────────────────────
+    // total/subtotal/discount/tax:  never
+    // due (and the customer's cached balance):  only when the refund settles a
+    //   debt, and only by appliedToDue, which is recorded on the return
+    // paid:  never — it is cash received, and reports it as `collected`
+    //
+    // Net revenue and profit are still derived at query time:
+    //   Net Revenue = SUM(sales.total) - SUM(returns.totalRefund)
+    // The return ledger remains the single source of truth for refunds.
 
     await t.commit();
 
@@ -303,7 +360,13 @@ exports.createReturn = async (req, res) => {
       ]
     });
 
-    res.status(201).json({ success: true, data: fullReturn });
+    // cashRefund is derived, not stored — totalRefund and appliedToDue are the
+    // facts, and a derived third column could drift from them. It is returned
+    // here so the receipt can print the split without recomputing it.
+    res.status(201).json({
+      success: true,
+      data: { ...fullReturn.toJSON(), cashRefund },
+    });
   } catch (err) {
     await t.rollback();
     V.handle(res, err, 'Could not process the return');

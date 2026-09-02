@@ -43,6 +43,20 @@ const REQUIRED = [
     definition: 'DECIMAL(5,2) NULL',
     after: 'discountMode',
   },
+  // ── Returns that settle debt ─────────────────────────────────────────────
+  //
+  // A refund on a credit sale settles what is owed before any cash changes
+  // hands. Reducing sales.due without recording where that money went would
+  // break `paid + due == total`, and "fixing" it by inflating sales.paid would
+  // corrupt `collected` — the cash-taken figure the shopkeeper reads every
+  // morning. So the third path money takes out of an invoice is recorded
+  // explicitly, and the invariant accounts for all three.
+  {
+    table: 'returns',
+    column: 'appliedToDue',
+    definition: 'DECIMAL(12,2) NOT NULL DEFAULT 0',
+    after: 'totalRefund',
+  },
 ];
 
 async function ensureColumns(sequelize, { verbose = true } = {}) {

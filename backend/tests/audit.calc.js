@@ -244,6 +244,147 @@ const near = (a, b, tol = 0.005) => Math.abs(Number(a) - Number(b)) < tol;
         lineSum !== null && near(lineSum, Number(mlRet.totalRefund)),
         `lines=${lineSum} total=${mlRet && mlRet.totalRefund}`);
 
+  // ══ RETURNS SETTLE OUTSTANDING DUE ══════════════════════════════════════
+  section('Returns settling due');
+
+  const mkDebtor = async (tag) =>
+    (await call('POST', '/customers', { name: 'AUDIT ' + tag + ' ' + Date.now(), phone: '01700001111' })).d.data.id;
+
+  // ── The plain case: bought on credit, returned everything ──────────────
+  const C1 = await mkDebtor('DueRet');
+  created.customers.push(C1);
+  r = await call('POST', '/sales', { items: [{ productId: B.id, quantity: 3 }], paid: 0, customerId: C1 });
+  const credit = r.d.data;
+  created.invoices.push(credit.invoiceNo);
+  check('a credit sale owes its full total (30.30)', near(credit.due, 30.30), 'due=' + credit.due);
+
+  r = await call('POST', '/returns', {
+    saleId: credit.id,
+    items: [{ saleItemId: credit.items[0].id, quantity: 3, restockItem: true }],
+    refundMethod: 'cash',
+  });
+  let ret = r.d && r.d.data;
+  check('returning everything settles the whole debt',
+        ret && near(Number(ret.appliedToDue), 30.30),
+        'appliedToDue=' + (ret && ret.appliedToDue) + ' refund=' + (ret && ret.totalRefund));
+  check('  and hands back no cash — nothing was ever paid',
+        ret && near(Number(ret.cashRefund), 0), 'cash=' + (ret && ret.cashRefund));
+  let bal = (await call('GET', '/customers/' + C1 + '/due')).d.data;
+  check('  the balance beside their name is now zero',
+        near(bal.outstanding, 0) && near(bal.cachedBalance, 0),
+        'invoices=' + bal.outstanding + ' cached=' + bal.cachedBalance);
+
+  // ── Refund exceeds the debt: settle first, hand back the rest ──────────
+  const C2 = await mkDebtor('PartPaid');
+  created.customers.push(C2);
+  // 10 x 10.10 = 101.00 total, 70 paid, 31.00 owing.
+  r = await call('POST', '/sales', { items: [{ productId: B.id, quantity: 10 }], paid: 70, customerId: C2 });
+  const partPaid = r.d.data;
+  created.invoices.push(partPaid.invoiceNo);
+  check('part-paid credit sale: total 101.00, paid 70, owes 31.00',
+        near(partPaid.total, 101.00) && near(partPaid.paid, 70) && near(partPaid.due, 31.00),
+        'total=' + partPaid.total + ' paid=' + partPaid.paid + ' due=' + partPaid.due);
+
+  r = await call('POST', '/returns', {
+    saleId: partPaid.id,
+    items: [{ saleItemId: partPaid.items[0].id, quantity: 10, restockItem: true }],
+    refundMethod: 'cash',
+  });
+  ret = r.d && r.d.data;
+  check('a refund larger than the debt settles the debt FIRST (31.00)',
+        ret && near(Number(ret.appliedToDue), 31.00), 'appliedToDue=' + (ret && ret.appliedToDue));
+  check('  and hands back exactly what was paid in cash (70.00)',
+        ret && near(Number(ret.cashRefund), 70.00), 'cash=' + (ret && ret.cashRefund));
+  check('  the two halves add up to the refund (101.00)',
+        ret && near(Number(ret.appliedToDue) + Number(ret.cashRefund), Number(ret.totalRefund)),
+        (ret && ret.appliedToDue) + ' + ' + (ret && ret.cashRefund) + ' = ' + (ret && ret.totalRefund));
+
+  // ── A walk-in is untouched ─────────────────────────────────────────────
+  r = await call('POST', '/sales', { items: [{ productId: B.id, quantity: 2 }] });
+  const walkIn = r.d.data;
+  created.invoices.push(walkIn.invoiceNo);
+  r = await call('POST', '/returns', {
+    saleId: walkIn.id, items: [{ saleItemId: walkIn.items[0].id, quantity: 2, restockItem: true }],
+    refundMethod: 'cash',
+  });
+  ret = r.d && r.d.data;
+  check('a walk-in return settles nothing and is all cash',
+        ret && near(Number(ret.appliedToDue), 0) && near(Number(ret.cashRefund), 20.20),
+        'applied=' + (ret && ret.appliedToDue) + ' cash=' + (ret && ret.cashRefund));
+
+  // ── A return AFTER the debt was already paid off ───────────────────────
+  const C3 = await mkDebtor('PaidOff');
+  created.customers.push(C3);
+  r = await call('POST', '/sales', { items: [{ productId: B.id, quantity: 3 }], paid: 0, customerId: C3 });
+  const settled = r.d.data;
+  created.invoices.push(settled.invoiceNo);
+  await call('POST', '/customers/' + C3 + '/collect-due', { amount: 30.30 });
+  r = await call('POST', '/returns', {
+    saleId: settled.id, items: [{ saleItemId: settled.items[0].id, quantity: 3, restockItem: true }],
+    refundMethod: 'cash',
+  });
+  ret = r.d && r.d.data;
+  check('a return after the debt was settled is all cash, no special case',
+        ret && near(Number(ret.appliedToDue), 0) && near(Number(ret.cashRefund), 30.30),
+        'applied=' + (ret && ret.appliedToDue) + ' cash=' + (ret && ret.cashRefund));
+
+  // ── The balance history reads as events ────────────────────────────────
+  const hist = (await call('GET', '/customers/' + C1 + '/history')).d.data;
+  const settlementEvent = hist.events.find((e) => e.type === 'return_settlement');
+  check('the settlement appears in the balance history as its own event',
+        !!settlementEvent && near(settlementEvent.amount, 30.30),
+        settlementEvent ? settlementEvent.ref + ' settled ' + settlementEvent.amount : 'no event');
+  check('  and names the invoice it settled',
+        !!settlementEvent && settlementEvent.againstInvoice === credit.invoiceNo,
+        settlementEvent && settlementEvent.againstInvoice);
+
+  // ── Concurrency: a return racing a payment for the same customer ───────
+  const C4 = await mkDebtor('Race');
+  created.customers.push(C4);
+  r = await call('POST', '/sales', { items: [{ productId: B.id, quantity: 5 }], paid: 0, customerId: C4 });
+  const raceSale = r.d.data;              // 50.50, all owing
+  created.invoices.push(raceSale.invoiceNo);
+  const [payRes, retRes] = await Promise.all([
+    call('POST', '/customers/' + C4 + '/collect-due', { amount: 20.00 }),
+    call('POST', '/returns', {
+      saleId: raceSale.id,
+      items: [{ saleItemId: raceSale.items[0].id, quantity: 2, restockItem: true }],
+      refundMethod: 'cash',
+    }),
+  ]);
+  check('a payment and a return racing the same customer both succeed (no deadlock)',
+        payRes.status < 400 && retRes.status < 400,
+        'payment=' + payRes.status + ' return=' + retRes.status);
+  const raceBal = (await call('GET', '/customers/' + C4 + '/due')).d.data;
+  check('  and the balance still reconciles afterwards',
+        near(raceBal.outstanding, raceBal.cachedBalance),
+        'invoices=' + raceBal.outstanding + ' cached=' + raceBal.cachedBalance);
+  check('  no money invented or lost: 50.50 - 20 paid - 20.20 returned = 10.30',
+        near(raceBal.outstanding, 10.30), 'outstanding=' + raceBal.outstanding);
+
+  // ── Concurrency: two returns against the same unpaid sale ──────────────
+  const C5 = await mkDebtor('TwoRet');
+  created.customers.push(C5);
+  r = await call('POST', '/sales', { items: [{ productId: B.id, quantity: 4 }], paid: 0, customerId: C5 });
+  const twoRet = r.d.data;                // 40.40 owing
+  created.invoices.push(twoRet.invoiceNo);
+  const both = await Promise.all([
+    call('POST', '/returns', { saleId: twoRet.id,
+      items: [{ saleItemId: twoRet.items[0].id, quantity: 2, restockItem: false }], refundMethod: 'cash' }),
+    call('POST', '/returns', { saleId: twoRet.id,
+      items: [{ saleItemId: twoRet.items[0].id, quantity: 2, restockItem: false }], refundMethod: 'cash' }),
+  ]);
+  const okBoth = both.filter((x) => x.status < 400);
+  check('two simultaneous returns on one unpaid sale both settle, neither deadlocks',
+        okBoth.length === 2, both.map((x) => x.status).join(','));
+  const twoBal = (await call('GET', '/customers/' + C5 + '/due')).d.data;
+  check('  the debt is fully cleared, not double-cleared',
+        near(twoBal.outstanding, 0) && near(twoBal.cachedBalance, 0),
+        'invoices=' + twoBal.outstanding + ' cached=' + twoBal.cachedBalance);
+  const appliedSum = okBoth.reduce((n, x) => n + Number(x.d.data.appliedToDue), 0);
+  check('  the settled amounts sum to exactly what was owed (40.40)',
+        near(appliedSum, 40.40), 'applied=' + appliedSum);
+
   // ══ PERCENTAGE DISCOUNT ═════════════════════════════════════════════════
   section('Percentage discount');
 
