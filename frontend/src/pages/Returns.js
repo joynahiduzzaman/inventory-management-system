@@ -250,7 +250,22 @@ export default function Returns({ darkMode, toggleDark }) {
                           {r.items?.length || 0} items
                         </span>
                       </td>
-                      <td style={{ fontWeight: '800', color: '#ef4444', fontSize: '14px' }}>৳{fmt(r.totalRefund)}</td>
+                      {/* The durable record, not just the moment of the return:
+                          a refund that cleared a debt looks identical to one
+                          paid out in cash unless the row says so. */}
+                      <td className="ret-amount-cell">
+                        <span className="ret-amount num">৳{fmt(r.totalRefund)}</span>
+                        {Number(r.appliedToDue) > 0 && (
+                          <span className="ret-amount-split">
+                            <span className="ret-chip is-settled">
+                              {t('returns.settledDebt')} ৳{fmt(r.appliedToDue)}
+                            </span>
+                            <span className="ret-chip">
+                              {t('returns.cashHandedBack')} ৳{fmt(Number(r.totalRefund) - Number(r.appliedToDue))}
+                            </span>
+                          </span>
+                        )}
+                      </td>
                       <td>
                         <span style={{ background: mc + '20', color: mc, borderRadius: '6px', padding: '3px 10px', fontSize: '11px', fontWeight: '700' }}>
                           {methodLabel(r.refundMethod)}

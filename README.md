@@ -220,6 +220,25 @@ shopkeeper reads every morning. The invariant changed instead — see
 Lock order is **sales, then customer**, identical to `collectDue`. Taking them
 in the other order deadlocks a return against a payment for the same customer.
 
+### Known gap: payments are not individually logged
+
+`GET /customers/:id/history` returns the balance as events — a credit sale, and
+a return that settled part of it. **It cannot list individual payments**, and
+the response says so with `paymentsItemised: false` rather than guessing.
+
+There is no payments table. The ledger *is* `sales.paid` / `sales.due`, so a
+payment is only visible as the gap between an invoice's total and what is still
+owed — you can see that someone paid ৳500 against an invoice, not that they
+paid it on 12 September.
+
+This is a deliberate deferral, not an oversight. A shopkeeper who needs to know
+when someone paid can open the sale. Closing it properly means a
+`customer_payments` table written by `collectDue` inside its existing
+transaction, plus a backfill decision for payments already absorbed into
+`sales.paid` with no date attached — those are unrecoverable, so any backfill
+would be an estimate. Worth doing if it becomes a real complaint; not worth
+inventing history for.
+
 ---
 
 ## Money and rounding
