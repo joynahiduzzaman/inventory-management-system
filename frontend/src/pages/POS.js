@@ -175,15 +175,50 @@ export default function POS({ darkMode, toggleDark }) {
     const fit = () => {
       const el = cartRef.current;
       if (!el) return;
-      const top = el.getBoundingClientRect().top + window.scrollY
-                - (document.querySelector('.page-content')?.getBoundingClientRect().top + window.scrollY || 0);
       const available = window.innerHeight - el.getBoundingClientRect().top - 16;
-      el.style.setProperty('--pos-cart-max', `${Math.max(320, Math.round(available))}px`);
-      void top;
+      let target = Math.max(320, Math.round(available));
+
+      // ── Whole rows only ──────────────────────────────────────────────────
+      // The list is allowed to scroll — on a 720px screen a five-item cart
+      // genuinely cannot show every row AND the payment controls. What it must
+      // not do is stop mid-row: a name sliced in half with a hard edge reads as
+      // a rendering fault, not as "there is more below". At 1440x720 with five
+      // items the list overflowed by exactly 11px of a 44px row, so the fifth
+      // row showed its top third and nothing else.
+      //
+      // So trim the panel by the remainder. The freed pixels go to the footer's
+      // side of the boundary rather than being left as a gap inside the card,
+      // and the list ends flush with a row edge.
+      const list = el.querySelector('.pos-cart-items');
+      const row = list && list.querySelector('[data-cart-row]');
+      if (list && row) {
+        const rowH = row.getBoundingClientRect().height;
+        const overflowing = list.scrollHeight > list.clientHeight + 1;
+        if (overflowing && rowH > 8) {
+          // Only the TOP padding is unavailable to rows. `overflow` clips at the
+          // padding box, so content scrolls through the bottom padding rather
+          // than being hidden behind it — counting padding-bottom as unusable
+          // left exactly that many pixels of the next row peeking out, which is
+          // the sliver this is here to remove. (The stylesheet also drops the
+          // bottom padding while scrolling, so the two agree.)
+          const cs = getComputedStyle(list);
+          const padTop = parseFloat(cs.paddingTop) || 0;
+          const chrome = el.getBoundingClientRect().height - list.clientHeight;
+          const usable = target - chrome - padTop;
+          const rows = Math.max(1, Math.floor((usable + 0.5) / rowH));
+          target = Math.round(chrome + padTop + rows * rowH);
+        }
+        // Tells the CSS to show the bottom fade and reserve the scrollbar. This
+        // class was referenced by the stylesheet and set by nothing, so neither
+        // affordance had ever appeared.
+        list.classList.toggle('is-scrollable', overflowing);
+      }
+
+      el.style.setProperty('--pos-cart-max', `${target}px`);
     };
     fit();
     window.addEventListener('resize', fit);
-    const id = setInterval(fit, 1000);   // toolbar can rewrap as data loads
+    const id = setInterval(fit, 400);   // toolbar rewraps, and the cart changes
     return () => { window.removeEventListener('resize', fit); clearInterval(id); };
   }, [loading]);
 
@@ -490,25 +525,26 @@ export default function POS({ darkMode, toggleDark }) {
                         <span className={`pos-tile-qty${pulse && pulse.id === p.id ? ' is-bump' : ''}`}
                               aria-hidden="true">{num(qty)}</span>
                       )}
-                      {/* Out of stock is a corner badge, not a word sharing the
-                          last line with the price. Sharing meant two nowrap
-                          items shrinking into each other and painting one on
-                          top of the other — ৳380.00 over "স্টক শেষ". A tile
-                          that is out of stock can never also be in the cart,
-                          so the corner is free. */}
-                      {oos && <span className="pos-tile-oos">{t('status.outOfStockShort')}</span>}
+
                       {/* A photograph earns its space; a generated monogram does
                           not — it repeated the first letters of the name printed
                           directly beneath it, for 40px of every tile. Products
                           with a real picture keep a small one. */}
                       {p.image && <ProductAvatar product={p} size={28} className="pos-tile-img" />}
-                      <span className={`pos-tile-name${inCart || oos ? ' has-badge' : ''}`} title={p.name}>{p.name}</span>
+                      <span className={`pos-tile-name${inCart ? ' has-badge' : ''}`} title={p.name}>{p.name}</span>
                       <span className="pos-tile-foot">
                         <span className="pos-tile-price">{money(p.price)}</span>
                         {/* Only a count here now — short, so it cannot crowd the
                             price. Colour carries the state: quiet when healthy,
                             amber when low. Out of stock is the corner badge. */}
-                        {!oos && (
+                        {/* The badge lives where the stock count lives, because it
+                            IS the stock count — the same slot, saying zero. In the
+                            corner it stole 40px of gutter from every out-of-stock
+                            name ("Extensi on…", "La Roch…") while the foot beside
+                            the price sat half empty. */}
+                        {oos ? (
+                          <span className="pos-tile-oos">{t('status.outOfStockShort')}</span>
+                        ) : (
                           <span className={`pos-tile-stock${p.stock <= p.lowStockAlert ? ' is-low' : ''}`}
                                 title={t('pos.inStock', { count: num(p.stock) })}>
                             {num(p.stock)}

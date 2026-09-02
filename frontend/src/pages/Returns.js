@@ -254,7 +254,11 @@ export default function Returns({ darkMode, toggleDark }) {
                           {methodLabel(r.refundMethod)}
                         </span>
                       </td>
-                      <td style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {/* Ellipsised on purpose — a reason can be a paragraph —
+                          but the full text has to stay reachable, or the column
+                          silently eats the end of every sentence. */}
+                      <td title={r.reason || ''}
+                          style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {r.reason || '—'}
                       </td>
                       <td>

@@ -8,6 +8,9 @@ import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { pdfUrl } from '../utils/config';
+import { useT } from '../i18n';
+import Icon from '../components/Icon';
+import { Button } from '../components/ui';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, Filler);
 
@@ -15,6 +18,9 @@ const fmt  = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0).toF
 const fmtN = (n) => new Intl.NumberFormat('en-BD').format(parseFloat(n || 0).toFixed(0));
 
 export default function Reports({ darkMode, toggleDark }) {
+  // This page had no i18n at all — every label was an English string literal,
+  // on the one screen whose entire job is presenting figures.
+  const { t, money } = useT();
   const [profit, setProfit]         = useState(null);
   const [salesChart, setSalesChart] = useState([]);
   const [topProducts, setTopProducts] = useState([]);
@@ -467,7 +473,7 @@ export default function Reports({ darkMode, toggleDark }) {
   const doughnutOpts = { responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:'right',labels:{font:{size:12},padding:12}} } };
 
   return (
-    <Layout title="Reports & Analytics" subtitle="Business performance overview" darkMode={darkMode} toggleDark={toggleDark}>
+    <Layout title={t('reports.title')} subtitle={t('reports.subtitle')} darkMode={darkMode} toggleDark={toggleDark}>
 
       {/* ── Filters + Export Buttons ───────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '20px' }}>
@@ -475,51 +481,56 @@ export default function Reports({ darkMode, toggleDark }) {
           {/* Left: filters */}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>FROM DATE</label>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('reports.fromDate')}</label>
               <input type="date" className="form-control" style={{ width: '160px' }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
             </div>
             <div>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>TO DATE</label>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('reports.toDate')}</label>
               <input type="date" className="form-control" style={{ width: '160px' }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
             </div>
             <div>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>CHART DAYS</label>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('reports.chartDays')}</label>
               <select className="form-control" style={{ width: '130px' }} value={days} onChange={e => setDays(e.target.value)}>
-                <option value={7}>Last 7 Days</option>
-                <option value={30}>Last 30 Days</option>
-                <option value={90}>Last 90 Days</option>
+                <option value={7}>{t('reports.lastNDays', { n: 7 })}</option>
+                <option value={30}>{t('reports.lastNDays', { n: 30 })}</option>
+                <option value={90}>{t('reports.lastNDays', { n: 90 })}</option>
               </select>
             </div>
-            <button className="btn btn-primary" onClick={loadData}>Apply</button>
-            <button className="btn btn-outline" onClick={() => { setDateFrom(''); setDateTo(''); setDays(30); }}>Reset</button>
+            <button className="btn btn-primary" onClick={loadData}>{t('common.apply')}</button>
+            <button className="btn btn-outline" onClick={() => { setDateFrom(''); setDateTo(''); setDays(30); }}>{t('common.reset')}</button>
           </div>
 
-          {/* Right: Export Buttons */}
-          <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
-            <button onClick={exportExcel} disabled={exporting==='excel'||loading}
-              style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', opacity: exporting==='excel'?0.7:1, boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }}>
-              {exporting==='excel' ? '⏳' : '📊'} Export Excel
-            </button>
-            <button onClick={exportPDF} disabled={exporting==='pdf'||loading}
-              style={{ padding: '8px 18px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', opacity: exporting==='pdf'?0.7:1, boxShadow: '0 2px 8px rgba(220,38,38,0.3)' }}>
-              {exporting==='pdf' ? '⏳' : '📄'} Export PDF
-            </button>
-            <button
-              onClick={() => {
-                const range = dateFrom && dateTo ? { from: dateFrom, to: dateTo } : {};
-                window.open(pdfUrl('sales-report', range), '_blank');
-              }}
-              style={{ padding: '8px 18px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(124,58,237,0.3)' }}>
-              📊 Sales PDF
-            </button>
-            <button
-              onClick={() => {
-                const range = dateFrom && dateTo ? { from: dateFrom, to: dateTo } : {};
-                window.open(pdfUrl('product-sales', range), '_blank');
-              }}
-              style={{ padding: '8px 18px', background: '#0891b2', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(8,145,178,0.3)' }}>
-              📦 Product PDF
-            </button>
+          {/* Right: exports. Four buttons in four unrelated bright colours —
+              green, red, purple, cyan — belonged to no palette in the app.
+              They are one row of secondary controls now, wrapping instead of
+              running 191px past the edge of a phone. */}
+          <div className="export-actions">
+            <Button variant="secondary" size="sm" onClick={exportExcel}
+                    disabled={exporting === 'excel' || loading}
+                    icon={<Icon name="receipt" size={15} />}>
+              {exporting === 'excel' ? '…' : t('reports.exportExcel')}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={exportPDF}
+                    disabled={exporting === 'pdf' || loading}
+                    icon={<Icon name="print" size={15} />}>
+              {exporting === 'pdf' ? '…' : t('reports.exportPdf')}
+            </Button>
+            <Button variant="secondary" size="sm"
+                    icon={<Icon name="receipt" size={15} />}
+                    onClick={() => {
+                      const range = dateFrom && dateTo ? { from: dateFrom, to: dateTo } : {};
+                      window.open(pdfUrl('sales-report', range), '_blank');
+                    }}>
+              {t('reports.salesPdf')}
+            </Button>
+            <Button variant="secondary" size="sm"
+                    icon={<Icon name="box" size={15} />}
+                    onClick={() => {
+                      const range = dateFrom && dateTo ? { from: dateFrom, to: dateTo } : {};
+                      window.open(pdfUrl('product-sales', range), '_blank');
+                    }}>
+              {t('reports.productPdf')}
+            </Button>
           </div>
         </div>
       </div>
@@ -528,18 +539,23 @@ export default function Reports({ darkMode, toggleDark }) {
         <>
           {/* ── Summary Cards ──────────────────────────────────────────────── */}
           {profit && (
-            <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: '20px' }}>
+            // Five hard-coded columns is what sliced every figure on a phone
+            // (৳152,18…). The grid now fits what it can and the figures stay
+            // whole. Colour carries meaning and nothing else: revenue, cost and
+            // expenses are figures, not verdicts, so they are neutral — only
+            // profit has a sign worth colouring.
+            <div className="report-kpis">
               {[
-                { label:'Total Revenue',  value:`৳${fmt(profit.revenue)}`,     color:'#6366f1', icon:'💰', bg:'#ede9fe' },
-                { label:'Cost of Goods',  value:`৳${fmt(profit.cogs)}`,        color:'#f59e0b', icon:'🏭', bg:'#fef3c7' },
-                { label:'Gross Profit',   value:`৳${fmt(profit.grossProfit)}`, color:'#22c55e', icon:'📈', bg:'#dcfce7' },
-                { label:'Total Expenses', value:`৳${fmt(profit.expense)}`,     color:'#ef4444', icon:'💸', bg:'#fee2e2' },
-                { label:'Net Profit',     value:`৳${fmt(profit.netProfit)}`,   color: profit.netProfit>=0?'#22c55e':'#ef4444', icon: profit.netProfit>=0?'🏆':'📉', bg: profit.netProfit>=0?'#dcfce7':'#fee2e2' },
+                { label: t('reports.totalRevenue'),  value: money(profit.revenue),     icon: 'money',   tone: '' },
+                { label: t('reports.costOfGoods'),   value: money(profit.cogs),        icon: 'box',     tone: '' },
+                { label: t('reports.grossProfit'),   value: money(profit.grossProfit), icon: 'scale',   tone: profit.grossProfit >= 0 ? 'is-ok' : 'is-danger' },
+                { label: t('reports.totalExpenses'), value: money(profit.expense),     icon: 'receipt', tone: '' },
+                { label: t('reports.netProfit'),     value: money(profit.netProfit),   icon: profit.netProfit >= 0 ? 'check' : 'warning', tone: profit.netProfit >= 0 ? 'is-ok' : 'is-danger' },
               ].map((s, i) => (
-                <div key={i} className="stat-card" style={{ borderTop:`3px solid ${s.color}` }}>
-                  <div style={{ width:'40px', height:'40px', borderRadius:'10px', background:s.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'18px', marginBottom:'12px' }}>{s.icon}</div>
-                  <div style={{ fontSize:'18px', fontWeight:'800', color:s.color, lineHeight:1, marginBottom:'4px' }}>{s.value}</div>
-                  <div style={{ fontSize:'11px', color:'var(--text-secondary)', fontWeight:'500' }}>{s.label}</div>
+                <div key={i} className={`report-kpi ${s.tone}`}>
+                  <span className="report-kpi-icon" aria-hidden="true"><Icon name={s.icon} size={18} /></span>
+                  <span className="report-kpi-value num">{s.value}</span>
+                  <span className="report-kpi-label">{s.label}</span>
                 </div>
               ))}
             </div>
@@ -564,7 +580,7 @@ export default function Reports({ darkMode, toggleDark }) {
           <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:'20px', marginBottom:'20px' }}>
             <div className="card">
               <div className="card-header">
-                <div className="card-title">📈 Sales Trend</div>
+                <div className="card-title">{t('reports.salesTrend')}</div>
                 <span style={{ fontSize:'12px', color:'var(--text-secondary)' }}>Last {days} days</span>
               </div>
               <div style={{ padding:'20px', height:'280px' }}>

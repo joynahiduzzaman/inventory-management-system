@@ -134,8 +134,10 @@ export default function Sales({ darkMode, toggleDark }) {
           </div>
           {!dueFilter && (
             <button
+              type="button"
+              className="ui-btn ui-btn--secondary ui-btn--sm"
               onClick={() => setDueFilter(true)}
-              style={{ padding: '6px 14px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}
+              style={{ flexShrink: 0 }}
             >
               {t('sales.showDueOnly')}
             </button>

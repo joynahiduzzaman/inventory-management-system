@@ -326,14 +326,9 @@ export default function Products({ darkMode, toggleDark }) {
           <div>
             <button
               onClick={() => setLowStockFilter(!lowStockFilter)}
+              className={`lowstock-toggle${lowStockFilter ? ' is-on' : ''}`}
               style={{
-                height: '38px', padding: '0 16px', borderRadius: '8px', fontSize: '13px',
-                fontWeight: '700', cursor: 'pointer', border: '2px solid',
-                borderColor: lowStockFilter ? '#d97706' : 'var(--border)',
-                background: lowStockFilter ? '#fef3c7' : 'var(--bg)',
-                color: lowStockFilter ? '#d97706' : 'var(--text-secondary)',
-                display: 'flex', alignItems: 'center', gap: '6px',
-                transition: 'all 0.15s'
+                display: 'flex', alignItems: 'center', gap: '6px'
               }}
             >
               {t('status.lowStock')}
@@ -351,31 +346,27 @@ export default function Products({ darkMode, toggleDark }) {
 
       {/* ── LOW STOCK ALERT BANNER ───────────────────────────────────────────── */}
       {lowStockCount > 0 && (
-        <div style={{
-          background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '10px',
-          padding: '12px 16px', marginBottom: '16px',
-          display: 'flex', alignItems: 'center', gap: '10px'
-        }}>
-          <span style={{ fontSize: '20px' }}>⚠️</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: '700', color: '#d97706', fontSize: '13px' }}>
+        // Tokens, not hex: this is the warn status and belongs to the one
+        // status palette. The subtitle used to fall through to
+        // products.emptyHint — "Add your first product to start selling" —
+        // which is an empty-state string shown over a list of 25 products.
+        <div className="lowstock-banner">
+          <Icon name="warning" size={20} aria-hidden="true" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="lowstock-title">
               {t('dash.lowStockItems')}: {num(lowStockCount)}
             </div>
-            <div style={{ fontSize: '12px', color: '#92400e', marginTop: '2px' }}>
+            <div className="lowstock-hint">
               {lowStockFilter
-                ? `Showing ${filtered.length} low stock product${filtered.length !== 1 ? 's' : ''} — click ✏️ Edit to update stock`
-                : t('products.emptyHint')}
+                ? t('products.lowStockShowing', { count: num(filtered.length) })
+                : t('products.lowStockHint')}
             </div>
           </div>
           <button
             onClick={() => setLowStockModal(true)}
-            style={{
-              padding: '6px 14px', background: '#d97706', color: '#fff',
-              border: 'none', borderRadius: '8px', cursor: 'pointer',
-              fontWeight: '700', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0
-            }}
+            className="lowstock-review"
           >
-            {t('status.lowStock')}
+            {t('products.reviewLowStock')}
           </button>
         </div>
       )}
@@ -385,7 +376,7 @@ export default function Products({ darkMode, toggleDark }) {
         {loading ? (
           <TableSkeleton rows={8} cols={7} />
         ) : (
-          <div className="table-wrapper">
+          <div className="table-wrapper as-cards">
             <table className="table">
               <thead>
                 <tr>
@@ -426,20 +417,20 @@ export default function Products({ darkMode, toggleDark }) {
                           <span className="mono col-show-lg" style={{ marginLeft: 6 }}>{p.sku || ''}</span>
                         </div>
                       </td>
-                      <td className="col-code col-hide-lg">
+                      <td className="col-code col-hide-lg" data-label={t('products.sku')}>
                         <span className="cell-code">{p.sku || '—'}</span>
                       </td>
-                      <td className="col-code col-hide-xl">
+                      <td className="col-code col-hide-xl" data-label={t('products.barcode')}>
                         {(p.barcode || p.sku) ? (
                           <span className="cell-code cell-code--boxed">{p.barcode || p.sku}</span>
                         ) : (
                           <span className="cell-warn">{t('products.barcode')} —</span>
                         )}
                       </td>
-                      <td className="col-hide-md">{p.category ? <span className="ui-badge neutral">{p.category.name}</span> : '—'}</td>
-                      <td className="col-num col-hide-lg">{money(p.cost)}</td>
-                      <td className="col-num cell-price">{money(p.price)}</td>
-                      <td className="num col-stock">
+                      <td className="col-hide-md" data-label={t('products.category')}>{p.category ? <span className="ui-badge neutral">{p.category.name}</span> : '—'}</td>
+                      <td className="col-num col-hide-lg" data-label={t('products.costPrice')}>{money(p.cost)}</td>
+                      <td className="col-num cell-price" data-label={t('products.sellPrice')}>{money(p.price)}</td>
+                      <td className="num col-stock" data-label={t('products.stock')}>
                         <div className="cell-stock">{num(p.stock)} <span className="cell-unit">{p.unit}</span></div>
                         <StockBadge stock={p.stock} lowStockAlert={p.lowStockAlert ?? 10} showCount={false} />
                       </td>

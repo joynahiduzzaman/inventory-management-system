@@ -141,21 +141,21 @@ export default function Inventory({ darkMode, toggleDark }) {
       {totals && (
         <div className="kpi-row">
           <div className="kpi">
-            <div className="kpi-label">Stock value (cost)</div>
+            <div className="kpi-label">{t('inv.stockValueCost')}</div>
             <div className="kpi-value">{money(totals.costValue)}</div>
-            <div className="kpi-sub">What the stock cost you</div>
+            <div className="kpi-sub">{t('inv.whatItCost')}</div>
           </div>
           <div className="kpi">
-            <div className="kpi-label">Stock value (retail)</div>
+            <div className="kpi-label">{t('inv.stockValueRetail')}</div>
             <div className="kpi-value">{money(totals.retailValue)}</div>
             <div className="kpi-sub">
-              Margin locked up: {money(totals.retailValue - totals.costValue)}
+              {t('inv.marginLocked', { amount: money(totals.retailValue - totals.costValue) })}
             </div>
           </div>
           <div className="kpi">
-            <div className="kpi-label">Units on hand</div>
+            <div className="kpi-label">{t('inv.unitsOnHand')}</div>
             <div className="kpi-value">{num(totals.units)}</div>
-            <div className="kpi-sub">Across {totals.productCount} products</div>
+            <div className="kpi-sub">{t('inv.acrossProducts', { count: num(totals.productCount) })}</div>
           </div>
           <div
             className={`kpi clickable ${totals.out > 0 ? 'is-critical' : ''}`}
@@ -163,9 +163,9 @@ export default function Inventory({ darkMode, toggleDark }) {
             role="button" tabIndex={0}
             onKeyDown={(e) => e.key === 'Enter' && (setTab('stock'), setStatusFilter('out'))}
           >
-            <div className="kpi-label">Out of stock</div>
+            <div className="kpi-label">{t('inv.outOfStock')}</div>
             <div className="kpi-value">{totals.out}</div>
-            <div className="kpi-sub">{totals.out ? 'Cannot be sold right now' : 'Nothing is out'}</div>
+            <div className="kpi-sub">{totals.out ? t('inv.cannotSell') : t('inv.nothingOut')}</div>
           </div>
           <div
             className={`kpi clickable ${totals.low > 0 ? 'is-warning' : ''}`}
@@ -173,9 +173,9 @@ export default function Inventory({ darkMode, toggleDark }) {
             role="button" tabIndex={0}
             onKeyDown={(e) => e.key === 'Enter' && (setTab('stock'), setStatusFilter('low'))}
           >
-            <div className="kpi-label">Low stock</div>
+            <div className="kpi-label">{t('inv.lowStock')}</div>
             <div className="kpi-value">{totals.low}</div>
-            <div className="kpi-sub">{totals.low ? 'Reorder soon' : 'All above threshold'}</div>
+            <div className="kpi-sub">{totals.low ? t('inv.needReorder') : t('inv.allAboveThreshold')}</div>
           </div>
         </div>
       )}
@@ -183,10 +183,10 @@ export default function Inventory({ darkMode, toggleDark }) {
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
       <div className="chip-row" style={{ marginBottom: 14 }}>
         <button className={`chip ${tab === 'stock' ? 'active' : ''}`} onClick={() => setTab('stock')}>
-          📦 Stock levels<span className="chip-count">{rows.length}</span>
+          <Icon name="box" size={15} aria-hidden="true" /> {t('inv.stockLevels')}<span className="chip-count">{rows.length}</span>
         </button>
         <button className={`chip ${tab === 'movements' ? 'active' : ''}`} onClick={() => setTab('movements')}>
-          🧾 Stock history
+          <Icon name="receipt" size={15} aria-hidden="true" /> {t('inv.stockHistory')}
         </button>
       </div>
 
