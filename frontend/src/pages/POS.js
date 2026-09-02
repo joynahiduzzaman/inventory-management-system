@@ -1187,8 +1187,36 @@ export default function POS({ darkMode, toggleDark }) {
               {t('sales.itemCount', { count: num(cart.reduce((n, i) => n + i.quantity, 0)) })}
               {' · '}
               {t(`pos.payment.${paymentMethod}`)}
-              {dueAmt > 0 ? ` · ${t('pos.dueAmount')} ${money(dueAmt)}` : ''}
             </div>
+
+            {/* What was handed over and what comes back, before the sale is
+                committed — not only on the screen that follows it. The till
+                this is modelled on shows cash, paid and change together in the
+                payment dialog AND stops on the change afterwards; the two do
+                different jobs. This one lets the cashier catch a mistyped
+                tender while it is still free to fix. Only rendered when an
+                amount was actually entered, so the common exact-change path
+                stays a single number and a single keystroke. */}
+            {paidEntered && (
+              <div className="pos-confirm-money">
+                <div className="pos-confirm-money-row">
+                  <span>{t('pos.amountReceived')}</span>
+                  <span className="num">{money(paidAmt)}</span>
+                </div>
+                {change > 0 && (
+                  <div className="pos-confirm-money-row is-change">
+                    <span>{t('pos.change')}</span>
+                    <span className="num">{money(change)}</span>
+                  </div>
+                )}
+                {dueAmt > 0 && (
+                  <div className="pos-confirm-money-row is-due">
+                    <span>{t('pos.dueAmount')}</span>
+                    <span className="num">{money(dueAmt)}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="pos-confirm-actions">
               <button type="button" className="ui-btn ui-btn--secondary"
                       onClick={() => setConfirmSale(false)}>

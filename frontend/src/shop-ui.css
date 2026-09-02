@@ -2394,3 +2394,38 @@ kbd {
   .pos-hold-actions { width: 100%; }
   .pos-hold-actions .ui-btn { flex: 1; justify-content: center; }
 }
+
+
+/* ── The money block on the confirmation ──────────────────────────────────
+   Tendered and change, live, before the sale is committed. The full-screen
+   change that follows is a different job: this one is for catching a mistyped
+   tender while it is still free to fix, that one is for counting notes into a
+   hand. Both exist on the till this is modelled on, for that reason. */
+.pos-confirm-money {
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  text-align: left;
+}
+.pos-confirm-money-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  color: var(--text-secondary);
+}
+.pos-confirm-money-row + .pos-confirm-money-row {
+  margin-top: 3px; padding-top: 3px; border-top: 1px solid var(--border);
+}
+.pos-confirm-money-row .num { color: var(--text-primary); }
+/* Change is the figure that gets handed back, so it carries the weight. */
+.pos-confirm-money-row.is-change { color: var(--accent); }
+.pos-confirm-money-row.is-change .num {
+  color: var(--accent);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+}
+.pos-confirm-money-row.is-due { color: var(--danger); }
+.pos-confirm-money-row.is-due .num { color: var(--danger); font-weight: var(--weight-bold); }

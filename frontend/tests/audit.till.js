@@ -150,7 +150,21 @@ const PAINT = (sel) => {
   await page.keyboard.type('200', { delay: 25 });
   await new Promise((r) => setTimeout(r, 600));
   await page.evaluate(() => document.getElementById('pos-checkout').click());
-  await new Promise((r) => setTimeout(r, 800));
+  await new Promise((r) => setTimeout(r, 900));
+
+  // The figures must be on the confirmation too, not only on the screen that
+  // follows the sale. The two do different jobs: this one catches a mistyped
+  // tender while it is still free to fix; the one after is for counting notes
+  // into a hand. The till this is modelled on has both.
+  const preMoney = await page.evaluate(() => {
+    const el = document.querySelector('.pos-confirm-money');
+    return el ? el.innerText.replace(/\s+/g, ' ') : null;
+  });
+  check('the confirmation shows the tender before the sale is committed',
+    !!preMoney && /200/.test(preMoney), preMoney || 'not shown');
+  check('  and the change it will produce (৳80)',
+    !!preMoney && /80/.test(preMoney), preMoney || 'not shown');
+
   // Enter accepts, so a keyboard cashier is not slowed down.
   await page.keyboard.press('Enter');
   await new Promise((r) => setTimeout(r, 5000));
