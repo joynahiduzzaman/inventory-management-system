@@ -2205,3 +2205,106 @@ kbd {
   margin-top: 2px; overflow-wrap: anywhere;
 }
 .integrity-hint { font-size: var(--text-xs); margin-top: 4px; opacity: 0.85; }
+
+/* Remaining stock, in the scan confirmation. Quiet when healthy, amber when
+   low, red when that was the last one — the same three states as a tile, in
+   the place the cashier is actually looking while scanning. */
+.pos-scan-msg  { flex: 1 1 auto; min-width: 0; }
+.pos-scan-left {
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+.pos-scan-left.is-low { background: var(--warn-soft);   color: var(--warn); }
+.pos-scan-left.is-out { background: var(--danger-soft); color: var(--danger); }
+
+/* ── Reprint, always available ────────────────────────────────────────────
+   Persistent on the till, the way a real counter needs it: paper jams and
+   customers come back, and neither should mean navigating to Sales History
+   with a queue waiting. */
+.pos-reprint {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  min-height: 34px; padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--bg-card); color: var(--text-secondary);
+  font-family: var(--font-sans); font-size: var(--text-xs); font-weight: var(--weight-semi);
+  white-space: nowrap; cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+@media (hover: hover) and (pointer: fine) {
+  .pos-reprint:hover { border-color: var(--accent); color: var(--accent); }
+}
+/* A target is both dimensions. Once the label hides at 390px this collapsed to
+   41px wide while still measuring 44 tall, which reads as compliant and is not. */
+@media (pointer: coarse) {
+  .pos-reprint { min-height: var(--tap); min-width: var(--tap); justify-content: center; }
+}
+.pos-reprint-inv {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-weight: var(--weight-normal);
+}
+/* The invoice number is useful context, not essential — drop it before the
+   button itself starts wrapping the toolbar. */
+@media (max-width: 1100px) { .pos-reprint-inv { display: none; } }
+@media (max-width: 640px)  { .pos-reprint-label { display: none; } }
+
+/* ── Confirm the sale ─────────────────────────────────────────────────────
+   One number, one default action, Enter accepts. A confirmation that slows a
+   keyboard-driven cashier down is one they learn to dismiss without reading,
+   which is worse than not having it. */
+.pos-confirm {
+  max-width: 380px; padding: var(--space-6);
+  text-align: center;
+  box-shadow: var(--elev-overlay);
+}
+.pos-confirm-label { font-size: var(--text-sm); font-weight: var(--weight-semi); color: var(--text-secondary); }
+.pos-confirm-total {
+  font-size: var(--text-3xl); font-weight: var(--weight-bold);
+  letter-spacing: -0.03em; line-height: 1.1;
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--text-primary);
+}
+.pos-confirm-meta { font-size: var(--text-xs); color: var(--text-muted); }
+.pos-confirm-actions { display: flex; gap: var(--space-2); justify-content: center; margin-top: var(--space-5); }
+.pos-confirm-actions .ui-btn { flex: 1; justify-content: center; }
+.pos-confirm kbd, .pos-change kbd {
+  margin-left: var(--space-2); padding: 1px 5px;
+  border: 1px solid currentColor; border-radius: 4px;
+  font-size: 10px; opacity: 0.7;
+}
+
+/* ── Change due ───────────────────────────────────────────────────────────
+   Deliberately the largest thing this application ever draws. Handing back the
+   wrong change is the most common counter mistake, and it happens when the
+   number is small and sitting beside something else. */
+.pos-change {
+  max-width: 420px; padding: var(--space-8) var(--space-6) var(--space-6);
+  text-align: center;
+  box-shadow: var(--elev-overlay);
+}
+.pos-change-tendered {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding-bottom: var(--space-3); margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm); font-weight: var(--weight-semi);
+  color: var(--text-secondary);
+}
+.pos-change-tendered .num { font-size: var(--text-lg); color: var(--text-primary); }
+.pos-change-label {
+  font-size: var(--text-sm); font-weight: var(--weight-bold);
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary);
+}
+.pos-change-amt {
+  font-size: clamp(44px, 12vw, 68px);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.04em; line-height: 1.05;
+  margin: var(--space-2) 0 var(--space-6);
+  color: var(--accent);
+}
+.pos-change-ok { width: 100%; justify-content: center; }

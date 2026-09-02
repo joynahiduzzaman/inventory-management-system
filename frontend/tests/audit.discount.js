@@ -77,7 +77,13 @@ const check=(n,ok,d='')=>{results.push({n,ok});console.log(`  ${ok?'PASS':'FAIL'
 
  // ── the sale actually lands with mode + rate
  await p.evaluate(()=>document.getElementById('pos-checkout').click());
+ // Checkout is confirm-then-complete now, and a change screen sits in front of
+ // the invoice whenever cash was tendered above the total.
+ await new Promise(r=>setTimeout(r,900));
+ await p.evaluate(()=>{const b=document.getElementById('pos-confirm-yes'); if(b)b.click();});
  await new Promise(r=>setTimeout(r,6000));
+ await p.evaluate(()=>{const b=document.getElementById('pos-change-ok'); if(b)b.click();});
+ await new Promise(r=>setTimeout(r,1200));
  const inv=await p.evaluate(()=>{const m=document.querySelector('.modal-body');return m?m.innerText.replace(/\s+/g,' '):null;});
  check('the invoice shows the percentage that was agreed', !!inv && /\(50%\)/.test(inv),
        inv?inv.slice(inv.indexOf('ছাড়')>=0?inv.indexOf('ছাড়')-40:0).slice(0,110):'no modal');

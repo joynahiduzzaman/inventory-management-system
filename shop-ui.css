@@ -1,0 +1,62 @@
+
+/* ── Confirm the sale ─────────────────────────────────────────────────────
+   One number, one default action, Enter accepts. A confirmation that slows a
+   keyboard-driven cashier down is one they will learn to dismiss without
+   reading, which is worse than not having it. */
+.pos-confirm {
+  max-width: 380px; padding: var(--space-6);
+  text-align: center;
+  box-shadow: var(--elev-overlay);
+}
+.pos-confirm-label {
+  font-size: var(--text-sm); font-weight: var(--weight-semi);
+  color: var(--text-secondary);
+}
+.pos-confirm-total {
+  font-size: var(--text-3xl); font-weight: var(--weight-bold);
+  letter-spacing: -0.03em; line-height: 1.1;
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--text-primary);
+}
+.pos-confirm-meta { font-size: var(--text-xs); color: var(--text-muted); }
+.pos-confirm-actions {
+  display: flex; gap: var(--space-2); justify-content: center;
+  margin-top: var(--space-5);
+}
+.pos-confirm-actions .ui-btn { flex: 1; justify-content: center; }
+.pos-confirm kbd, .pos-change kbd {
+  margin-left: var(--space-2); padding: 1px 5px;
+  border: 1px solid currentColor; border-radius: 4px;
+  font-size: 10px; opacity: 0.7;
+}
+
+/* ── Change due ───────────────────────────────────────────────────────────
+   Deliberately the largest thing this application ever draws. Handing back
+   the wrong change is the most common counter mistake, and it happens when
+   the number is small and beside something else. */
+.pos-change {
+  max-width: 420px; padding: var(--space-8) var(--space-6) var(--space-6);
+  text-align: center;
+  box-shadow: var(--elev-overlay);
+}
+.pos-change-tendered {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding-bottom: var(--space-3); margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm); font-weight: var(--weight-semi);
+  color: var(--text-secondary);
+}
+.pos-change-tendered .num { font-size: var(--text-lg); color: var(--text-primary); }
+.pos-change-label {
+  font-size: var(--text-sm); font-weight: var(--weight-bold);
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.pos-change-amt {
+  font-size: clamp(44px, 12vw, 68px);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.04em; line-height: 1.05;
+  margin: var(--space-2) 0 var(--space-6);
+  color: var(--accent);
+}
+.pos-change-ok { width: 100%; justify-content: center; }

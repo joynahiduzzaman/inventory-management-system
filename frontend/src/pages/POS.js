@@ -9,7 +9,7 @@ import { useT } from '../i18n';
 import Icon from '../components/Icon';
 import { Button, IconButton, ProductAvatar, EmptyState, GridSkeleton, useConfirm } from '../components/ui';
 import { scanOk, scanFail } from '../components/scanFeedback';
-import { printReceipt, saveReceiptWidth } from '../utils/receipt';
+import { printReceipt, saveReceiptWidth, savedReceiptWidth } from '../utils/receipt';
 import { useAuth } from '../context/AuthContext';
 
 export default function POS({ darkMode, toggleDark }) {
@@ -45,6 +45,17 @@ export default function POS({ darkMode, toggleDark }) {
   const [hiddenRows, setHiddenRows]     = useState(0);
   // The customer selector is collapsed until it is wanted.
   const [custOpen, setCustOpen]         = useState(false);
+  // The last completed sale, for reprinting. Fetched from the server rather
+  // than remembered in this tab: a paper jam is often noticed after somebody
+  // has navigated away, and a crashed tab must not be the reason a customer
+  // cannot have their receipt.
+  const [lastSale, setLastSale]         = useState(null);
+  // Confirm before finalising, and show the change afterwards. Both are
+  // modals rather than corner text because both are moments where a cashier
+  // with a queue behind them makes an expensive mistake.
+  const [confirmSale, setConfirmSale]   = useState(false);
+  const [changeModal, setChangeModal]   = useState(null);   // { tendered, change }
+  const [pendingInvoice, setPendingInvoice] = useState(null);
   const [loading, setLoading]           = useState(true);
   const [processing, setProcessing]     = useState(false);
   const [invoiceModal, setInvoiceModal] = useState(null);
@@ -59,14 +70,19 @@ export default function POS({ darkMode, toggleDark }) {
   // ─── Load data ──────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
-      const [p, c, cats] = await Promise.all([
+      const [p, c, cats, recent] = await Promise.all([
         api.get('/products'),
         api.get('/customers'),
-        api.get('/categories')
+        api.get('/categories'),
+        // Tolerated failure: a missing last sale must never stop the till
+        // loading, so this one resolves to null rather than rejecting.
+        api.get('/sales?page=1&limit=1').catch(() => null),
       ]);
       setProducts(p.data.data);
       setCustomers(c.data.data);
       setCategories(cats.data.data);
+      const recentSale = recent && recent.data && recent.data.data && recent.data.data[0];
+      if (recentSale) setLastSale(recentSale);
     } catch { toast.error(t('error.loadFailed', { thing: t('pos.title') })); }
     finally { setLoading(false); }
   }, [t]);
@@ -95,7 +111,14 @@ export default function POS({ darkMode, toggleDark }) {
           scanFail();
           return prev;
         }
-        setScanStatus({ msg: t('pos.scanFound', { name: product.name }), type: 'success' });
+        setScanStatus({
+          msg: t('pos.scanFound', { name: product.name }),
+          // Remaining AFTER this unit: existing.quantity is the count before
+          // the increment that is about to happen.
+          left: product.stock - (existing.quantity + 1),
+          low: product.lowStockAlert ?? 10,
+          type: 'success',
+        });
         scanOk();
         setPulse({ id: product.id, kind: 'bump' });
         return prev.map(i => i.productId === product.id
@@ -103,7 +126,12 @@ export default function POS({ darkMode, toggleDark }) {
           : i
         );
       }
-      setScanStatus({ msg: t('pos.scanFound', { name: product.name }), type: 'success' });
+      setScanStatus({
+        msg: t('pos.scanFound', { name: product.name }),
+        left: product.stock - 1,
+        low: product.lowStockAlert ?? 10,
+        type: 'success',
+      });
       scanOk();
       setPulse({ id: product.id, kind: 'new' });
       return [...prev, {
@@ -296,7 +324,7 @@ export default function POS({ darkMode, toggleDark }) {
   // owns the screen.
   useEffect(() => {
     const onKey = (e) => {
-      if (cameraOpen || invoiceModal || addCustModal) return;
+      if (cameraOpen || invoiceModal || addCustModal || confirmSale || changeModal) return;
       if (e.key === 'F2') { e.preventDefault(); scanInputRef.current?.focus(); scanInputRef.current?.select(); }
       if (e.key === 'F4') { e.preventDefault(); document.getElementById('pos-checkout')?.click(); }
       if (e.key === 'F3') { e.preventDefault(); document.getElementById('pos-paid')?.focus(); }
@@ -306,7 +334,7 @@ export default function POS({ darkMode, toggleDark }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cameraOpen, invoiceModal, addCustModal]);
+  }, [cameraOpen, invoiceModal, addCustModal, confirmSale, changeModal]);
 
   // ─── Manual scan input ───────────────────────────────────────────────────────
   const handleManualScan = (e) => {
@@ -373,12 +401,23 @@ export default function POS({ darkMode, toggleDark }) {
   const needsCustomerForDue = dueAmt > 0 && !customerId;
 
   // ─── Checkout ────────────────────────────────────────────────────────────────
-  const handleCheckout = async () => {
+  //
+  // Two steps on purpose. Everything that can refuse the sale is checked
+  // BEFORE the confirmation, so the dialog never appears on a sale that is
+  // about to fail — a confirmation you have to dismiss and then fix is worse
+  // than no confirmation at all.
+  const requestCheckout = () => {
     if (!cart.length) return toast.error(t('error.cartEmpty'));
     if (discountTooBig) return toast.error(t('pos.discountTooBig'));
     if (needsCustomerForDue) {
       return toast.error(t('pos.dueNeedsCustomer', { amount: money(dueAmt) }));
     }
+    setConfirmSale(true);
+    return undefined;
+  };
+
+  const handleCheckout = async () => {
+    setConfirmSale(false);
     setProcessing(true);
     try {
       const res = await api.post('/sales', {
@@ -393,7 +432,19 @@ export default function POS({ darkMode, toggleDark }) {
       // `_tendered` is display-only and never sent anywhere: the server caps
       // `paid` at the invoice total, so the record cannot say what was handed
       // over, and without this the receipt could never show change.
-      setInvoiceModal({ ...res.data.data, _tendered: paidAmt });
+      const invoice = { ...res.data.data, _tendered: paidAmt };
+      setLastSale(res.data.data);
+
+      // Change comes first and on its own. Handing back the wrong change is
+      // the most common mistake at a counter, and the fix is a number nobody
+      // can miss rather than a smaller one in a corner.
+      const changeDue = Math.round((paidAmt - Number(res.data.data.total)) * 100) / 100;
+      if (changeDue > 0) {
+        setChangeModal({ tendered: paidAmt, change: changeDue });
+        setPendingInvoice(invoice);
+      } else {
+        setInvoiceModal(invoice);
+      }
       setCart([]); setDiscount(0); setDiscountMode('flat'); setPayMethod('cash'); setCustOpen(false);
         setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
       fetchData();
@@ -402,6 +453,28 @@ export default function POS({ darkMode, toggleDark }) {
       toast.error(errorMessage(err, 'Checkout failed'));
     } finally { setProcessing(false); }
   };
+
+  /** Close the change screen and show the receipt that was waiting behind it. */
+  const dismissChange = useCallback(() => {
+    setChangeModal(null);
+    if (pendingInvoice) { setInvoiceModal(pendingInvoice); setPendingInvoice(null); }
+  }, [pendingInvoice]);
+
+  // Enter drives both dialogs. The till is driven by a keyboard, and a
+  // confirmation that needs a mouse is a confirmation that gets resented.
+  useEffect(() => {
+    if (!confirmSale && !changeModal) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (changeModal) dismissChange();
+        else if (!processing) handleCheckout();
+      }
+      if (e.key === 'Escape' && confirmSale) { e.preventDefault(); setConfirmSale(false); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   // ─── Filtered products ───────────────────────────────────────────────────────
   const filtered = products.filter(p => {
@@ -479,6 +552,24 @@ export default function POS({ darkMode, toggleDark }) {
               <span className="pos-scanner-dot" aria-hidden="true" />
               <span>{t('pos.scannerReady')}</span>
             </div>
+            {/* Reprint, always present. Until now this meant leaving the till,
+                opening Sales History and finding the invoice — with a queue
+                waiting and a customer holding a torn receipt. */}
+            {lastSale && (
+              <button type="button" id="pos-reprint" className="pos-reprint"
+                      title={t('pos.reprintLastHint', { invoice: lastSale.invoiceNo })}
+                      onClick={() => {
+                        const ok = printReceipt(lastSale, {
+                          width: savedReceiptWidth(), t, money, lang,
+                          cashier: user ? user.name : '',
+                        });
+                        if (!ok) toast.error(t('error.allowPopups'));
+                      }}>
+                <Icon name="print" size={15} />
+                <span className="pos-reprint-label">{t('pos.reprintLast')}</span>
+                <span className="pos-reprint-inv">{lastSale.invoiceNo}</span>
+              </button>
+            )}
             <div className="no-print pos-shortcuts">
               <span><kbd>F2</kbd> {t('pos.shortcutScan')}</span>
               <span><kbd>F3</kbd> {t('pos.shortcutPayment')}</span>
@@ -495,7 +586,20 @@ export default function POS({ darkMode, toggleDark }) {
             <div className={`pos-scan-status is-${scanStatus.type || 'info'}`}>
               <Icon name={scanStatus.type === 'error' ? 'warning'
                         : scanStatus.type === 'success' ? 'check' : 'search'} size={15} />
-              <span>{scanStatus.msg}</span>
+              <span className="pos-scan-msg">{scanStatus.msg}</span>
+              {/* What is left on the shelf after this unit. The count was only
+                  on the tile, which the cashier is not looking at while
+                  scanning — so selling the second-to-last one looked exactly
+                  like selling the tenth. */}
+              {scanStatus.left != null && (
+                <span className={`pos-scan-left${
+                  scanStatus.left <= 0 ? ' is-out'
+                  : scanStatus.left <= (scanStatus.low ?? 10) ? ' is-low' : ''}`}>
+                  {scanStatus.left <= 0
+                    ? t('pos.noneLeft')
+                    : t('pos.stockRemaining', { count: num(scanStatus.left) })}
+                </span>
+              )}
             </div>
           )}
           </div>
@@ -796,7 +900,7 @@ export default function POS({ darkMode, toggleDark }) {
                 size="lg"
                 block
                 title={`${t('pos.completeSale')} (F4)`}
-                onClick={handleCheckout}
+                onClick={requestCheckout}
                 loading={processing}
                 disabled={cart.length === 0 || discountTooBig || needsCustomerForDue}
               >
@@ -831,6 +935,60 @@ export default function POS({ darkMode, toggleDark }) {
             <span className="pos-mcb-cta">{t('pos.reviewAndPay')} →</span>
           </span>
         </button>
+      )}
+
+      {/* ── CONFIRM THE SALE ──────────────────────────────────────────────────
+          Short and keyboard-first. A cashier working at speed presses Enter;
+          nothing here should slow that down, which is why it shows one number
+          and offers one default action. */}
+      {confirmSale && (
+        <div className="modal-overlay" onClick={() => setConfirmSale(false)}>
+          <div className="modal pos-confirm" onClick={(e) => e.stopPropagation()}>
+            <div className="pos-confirm-label">{t('pos.confirmTitle')}</div>
+            <div className="pos-confirm-total num">{money(total)}</div>
+            <div className="pos-confirm-meta">
+              {t('sales.itemCount', { count: num(cart.reduce((n, i) => n + i.quantity, 0)) })}
+              {' · '}
+              {t(`pos.payment.${paymentMethod}`)}
+              {dueAmt > 0 ? ` · ${t('pos.dueAmount')} ${money(dueAmt)}` : ''}
+            </div>
+            <div className="pos-confirm-actions">
+              <button type="button" className="ui-btn ui-btn--secondary"
+                      onClick={() => setConfirmSale(false)}>
+                {t('common.cancel')} <kbd>Esc</kbd>
+              </button>
+              <button type="button" id="pos-confirm-yes" autoFocus
+                      className="ui-btn ui-btn--primary"
+                      disabled={processing}
+                      onClick={handleCheckout}>
+                {t('pos.confirmYes')} <kbd>Enter</kbd>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CHANGE DUE ────────────────────────────────────────────────────────
+          Its own screen, nothing else on it. The tendered amount sits above the
+          change, because the cashier is checking one against the other before
+          opening the drawer. */}
+      {changeModal && (
+        <div className="modal-overlay" onClick={dismissChange}>
+          <div className="modal pos-change" onClick={(e) => e.stopPropagation()}
+               role="alertdialog" aria-labelledby="pos-change-amt">
+            <div className="pos-change-tendered">
+              <span>{t('pos.amountReceived')}</span>
+              <span className="num">{money(changeModal.tendered)}</span>
+            </div>
+            <div className="pos-change-label">{t('pos.changeDue')}</div>
+            <div className="pos-change-amt num" id="pos-change-amt">{money(changeModal.change)}</div>
+            <button type="button" id="pos-change-ok" autoFocus
+                    className="ui-btn ui-btn--primary ui-btn--lg pos-change-ok"
+                    onClick={dismissChange}>
+              {t('common.done')} <kbd>Enter</kbd>
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── CAMERA MODAL ─────────────────────────────────────────────────────── */}

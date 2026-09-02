@@ -160,7 +160,14 @@ const SCAN = '[data-scan-input="true"]';
 
   // After a completed sale.
   await page.evaluate(() => document.getElementById('pos-checkout')?.click());
+  // Completing a sale is two steps now: a confirmation, then — when cash was
+  // tendered above the total — a change screen. Both accept Enter, which is
+  // how a cashier drives them, so that is how this drives them too.
+  await new Promise((r) => setTimeout(r, 900));
+  await page.evaluate(() => { const b = document.getElementById('pos-confirm-yes'); if (b) b.click(); });
   await new Promise((r) => setTimeout(r, 6000));
+  await page.evaluate(() => { const b = document.getElementById('pos-change-ok'); if (b) b.click(); });
+  await new Promise((r) => setTimeout(r, 1200));
   await page.evaluate(() => {
     const b = [...document.querySelectorAll('.modal-footer button, .modal button')].find((x) => /বিক্রয় কাউন্টার|New Sale|Point of Sale/i.test(x.innerText));
     if (b) b.click();
