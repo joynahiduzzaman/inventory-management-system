@@ -192,6 +192,7 @@ app.use('/api/customers',  require('./routes/customers'));
 app.use('/api/expenses',   require('./routes/expenses'));
 app.use('/api/suppliers',  require('./routes/suppliers'));
 app.use('/api/categories', require('./routes/categories'));
+app.use('/api/holds',      require('./routes/holds'));
 app.use('/api/reports',    require('./routes/reports'));
 app.use('/api/pdf',        require('./routes/pdf'));
 

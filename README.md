@@ -357,6 +357,25 @@ The server now collapses these duplicates on every boot and adds the indexes the
 reporting queries need. Run it manually with `npm run db:fix-indexes` — useful
 if a table has already hit the ceiling and the app will not start.
 
+### Creating a table on production
+
+`scripts/migrateSchema.js` can create tables as well as add columns, but only
+those named in `CREATABLE_TABLES` — deliberately not "every model". Syncing a
+model whose definition has drifted from production is how a live table gets
+altered without anybody deciding to, and the drift would be invisible until
+after it had happened.
+
+**Do not use `Model.sync()` for this.** A model is bound to the connection it
+was defined on — `config/database`, the local database — so `sync()` creates
+the table *there* and reports success while the target still has none. That
+happened once during this feature; the `--check` run afterwards is what caught
+it. The script now takes the shape from the model and calls `createTable` on
+the target's own query interface.
+
+Always run `npm run migrate:schema:check` before and after. It reports what
+would be created before creating anything, and it is the only thing that will
+tell you the apply went to the wrong database.
+
 ### Changing the schema: `server.js` does not run in production
 
 **On Vercel the boot sequence never executes.** The API is a serverless
@@ -458,6 +477,44 @@ The dashboard variant is bounded to a date range and every column it touches is
 indexed, so it is cheap enough to run on every load. On Vercel the API is a
 serverless function and `server.js` never runs, which is precisely why the check
 could not live at boot alone.
+
+## Parked sales (hold and recall)
+
+A customer walks off to fetch their wallet while four people wait. The cashier
+parks that cart with **F6**, serves the queue, and brings it back with **F7**.
+Those keys match CloudPOS, which the shop's cashiers already use daily.
+
+Three rules make it safe rather than merely present:
+
+**A held cart reserves no stock.** Reserving would let an abandoned cart make
+goods unsellable, which is worse than the problem it solves. So a recall
+rebuilds the cart from live products and reports what changed — short stock, a
+price change, a withdrawn product — at recall, not at Complete Sale. The cart
+is priced from the live product, never the snapshot: the shop's price is the
+shop's price, and a cart parked yesterday must not sell at yesterday's.
+
+**Recall is a compare-and-set.** Two terminals can hit the same parked cart;
+exactly one wins, and the other is told who took it and when. That is the
+difference between a bug and an explanation.
+
+**A recalled cart can be put back.** The common mistake is not a crashed tab,
+it is recalling the wrong cart with a queue waiting. Only a cart that became a
+sale is beyond restoring, because restoring it would duplicate the sale.
+
+### Lifetime
+
+Parked carts expire at **4am**, defined once in `config/holds.js` and derived
+everywhere else from there — the expiry sweep, the API response and the words
+on screen.
+
+Not midnight. Shops here trade until 11pm and past it, so a cart parked at
+11:40pm would vanish forty minutes later with the customer still in the shop:
+a defensible rule producing an indefensible outcome. 4am is a time when nobody
+is selling.
+
+Expiry is swept lazily on read, because a serverless host has no scheduler and
+a cron would simply not run. Expired carts stay listed in their own section,
+labelled, so a cashier is not left hunting for one that quietly disappeared.
 
 ## Known limitations
 

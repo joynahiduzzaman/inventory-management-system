@@ -50,6 +50,16 @@ export default function POS({ darkMode, toggleDark }) {
   // has navigated away, and a crashed tab must not be the reason a customer
   // cannot have their receipt.
   const [lastSale, setLastSale]         = useState(null);
+  // Parked sales. `recalledHoldId` is the cart currently on this screen, so
+  // that finishing it can close the hold and stop it being restored into a
+  // duplicate.
+  const [holds, setHolds]               = useState({ held: [], recalled: [], expired: [], expiryHour: 4 });
+  const [recallOpen, setRecallOpen]     = useState(false);
+  const [recallIssues, setRecallIssues] = useState([]);
+  const [recalledHoldId, setRecalledHoldId] = useState(null);
+  // Declared here so the keyboard shortcuts, registered above the actions, can
+  // reach holdCart without depending on declaration order.
+  const holdCartRef = useRef(null);
   // Confirm before finalising, and show the change afterwards. Both are
   // modals rather than corner text because both are moments where a cashier
   // with a queue behind them makes an expensive mistake.
@@ -88,6 +98,16 @@ export default function POS({ darkMode, toggleDark }) {
   }, [t]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  /** The parked-sale list. Cheap, and the badge must not go stale. */
+  const loadHolds = useCallback(async () => {
+    try {
+      const r = await api.get('/holds');
+      setHolds(r.data.data);
+    } catch { /* the till still works without it */ }
+  }, []);
+  useEffect(() => { loadHolds(); }, [loadHolds]);
+
 
   // Clear the pulse marker shortly after the animation it triggers.
   useEffect(() => {
@@ -324,17 +344,20 @@ export default function POS({ darkMode, toggleDark }) {
   // owns the screen.
   useEffect(() => {
     const onKey = (e) => {
-      if (cameraOpen || invoiceModal || addCustModal || confirmSale || changeModal) return;
+      if (cameraOpen || invoiceModal || addCustModal || confirmSale || changeModal || recallOpen) return;
       if (e.key === 'F2') { e.preventDefault(); scanInputRef.current?.focus(); scanInputRef.current?.select(); }
       if (e.key === 'F4') { e.preventDefault(); document.getElementById('pos-checkout')?.click(); }
       if (e.key === 'F3') { e.preventDefault(); document.getElementById('pos-paid')?.focus(); }
+      // F6/F7 match CloudPOS, which the shop's cashiers already use daily.
+      if (e.key === 'F6') { e.preventDefault(); holdCartRef.current?.(); }
+      if (e.key === 'F7') { e.preventDefault(); loadHolds(); setRecallOpen(true); }
       if (e.key === 'Escape' && document.activeElement?.tagName !== 'INPUT') {
         document.getElementById('pos-clear')?.click();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cameraOpen, invoiceModal, addCustModal, confirmSale, changeModal]);
+  }, [cameraOpen, invoiceModal, addCustModal, confirmSale, changeModal, recallOpen, loadHolds]);
 
   // ─── Manual scan input ───────────────────────────────────────────────────────
   const handleManualScan = (e) => {
@@ -400,6 +423,72 @@ export default function POS({ darkMode, toggleDark }) {
   // Money owed has to be attached to somebody the shop can chase.
   const needsCustomerForDue = dueAmt > 0 && !customerId;
 
+  // ─── Hold and recall ─────────────────────────────────────────────────────
+  const holdCart = useCallback(async () => {
+    if (!cart.length) return toast.error(t('error.cartEmpty'));
+    try {
+      await api.post('/holds', {
+        items: cart.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        customerId: customerId || null,
+        note: note || null,
+        discount: isPercent ? undefined : resolvedAmt,
+        discountMode, discountRate: isPercent ? ratePct : undefined,
+      });
+      // Clearing is the point: the screen is free for the next customer.
+      setCart([]); setDiscount(0); setDiscountMode('flat'); setPayMethod('cash');
+      setCustOpen(false); setPaid(''); setNote(''); setNoteOpen(false); setCustomerId('');
+      setRecalledHoldId(null); setRecallIssues([]);
+      await loadHolds();
+      toast.success(t('pos.heldOk'));
+      focusScannerRef.current?.();
+    } catch (err) { toast.error(errorMessage(err, 'Could not hold this sale')); }
+    return undefined;
+  }, [cart, customerId, note, isPercent, resolvedAmt, discountMode, ratePct, t, loadHolds]);
+
+  holdCartRef.current = holdCart;
+
+  const doRecall = useCallback(async (id) => {
+    try {
+      const r = await api.post(`/holds/${id}/recall`);
+      const d = r.data.data;
+      setCart(d.cart.map((c) => ({
+        productId: c.productId, name: c.name, price: c.price, cost: c.cost,
+        quantity: c.quantity, stock: c.stock, total: c.total, unit: c.unit, image: c.image,
+      })));
+      setCustomerId(d.customerId || '');
+      if (d.customerId) setCustOpen(true);
+      setNote(d.note || ''); setNoteOpen(!!d.note);
+      setDiscountMode(d.discountMode || 'flat');
+      setDiscount(d.discountMode === 'percent' ? (d.discountRate || 0) : (d.discount || 0));
+      setRecalledHoldId(id);
+      setRecallIssues(d.issues || []);
+      setRecallOpen(false);
+      await loadHolds();
+      if (!d.issues || !d.issues.length) toast.success(t('pos.recalledOk'));
+    } catch (err) {
+      // A 409 is not a failure to explain away — it is the other terminal, and
+      // the cashier needs to know who has it.
+      const msg = err && err.response && err.response.data && err.response.data.message;
+      toast.error(msg || errorMessage(err, 'Could not recall that sale'));
+      await loadHolds();
+    }
+  }, [t, loadHolds]);
+
+  const restoreHold = useCallback(async (id) => {
+    try {
+      await api.post(`/holds/${id}/restore`);
+      await loadHolds();
+      toast.success(t('pos.restoredOk'));
+    } catch (err) { toast.error(errorMessage(err, 'Could not restore that sale')); }
+  }, [t, loadHolds]);
+
+  const discardHold = useCallback(async (id) => {
+    try {
+      await api.delete(`/holds/${id}`);
+      await loadHolds();
+    } catch (err) { toast.error(errorMessage(err, 'Could not discard that sale')); }
+  }, [loadHolds]);
+
   // ─── Checkout ────────────────────────────────────────────────────────────────
   //
   // Two steps on purpose. Everything that can refuse the sale is checked
@@ -434,6 +523,16 @@ export default function POS({ darkMode, toggleDark }) {
       // over, and without this the receipt could never show change.
       const invoice = { ...res.data.data, _tendered: paidAmt };
       setLastSale(res.data.data);
+
+      // Close the hold this cart came from, so it can never be restored into
+      // a second copy of a sale that has already been made.
+      if (recalledHoldId) {
+        api.post(`/holds/${recalledHoldId}/complete`, { saleId: res.data.data.id })
+          .catch(() => { /* the sale is what matters; the hold expires anyway */ });
+        setRecalledHoldId(null);
+      }
+      setRecallIssues([]);
+      loadHolds();
 
       // Change comes first and on its own. Handing back the wrong change is
       // the most common mistake at a counter, and the fix is a number nobody
@@ -496,6 +595,14 @@ export default function POS({ darkMode, toggleDark }) {
     return 0;
   });
 
+  /** "12 min ago" without pulling in a date library for one string. */
+  const relTime = (iso) => {
+    const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    if (mins < 1) return t('pos.justNow');
+    if (mins < 60) return t('pos.minsAgo', { n: num(mins) });
+    return t('pos.hoursAgo', { n: num(Math.floor(mins / 60)) });
+  };
+
   const isInCart   = (id) => cart.some(i => i.productId === id);
   const getCartQty = (id) => cart.find(i => i.productId === id)?.quantity || 0;
   const payMethods = [
@@ -552,6 +659,27 @@ export default function POS({ darkMode, toggleDark }) {
               <span className="pos-scanner-dot" aria-hidden="true" />
               <span>{t('pos.scannerReady')}</span>
             </div>
+            {/* Park the current cart and free the screen. F6 matches the till
+                the shop's cashiers already use. */}
+            <button type="button" id="pos-hold" className="pos-till-btn"
+                    disabled={!cart.length}
+                    title={`${t('pos.holdSale')} (F6)`}
+                    onClick={holdCart}>
+              <Icon name="tag" size={15} />
+              <span className="pos-till-label">{t('pos.holdSale')}</span>
+              <kbd>F6</kbd>
+            </button>
+            <button type="button" id="pos-recall" className="pos-till-btn"
+                    title={`${t('pos.recallSale')} (F7)`}
+                    onClick={() => { loadHolds(); setRecallOpen(true); }}>
+              <Icon name="refresh" size={15} />
+              <span className="pos-till-label">{t('pos.recallSale')}</span>
+              {holds.held.length > 0 && (
+                <span className="pos-hold-badge">{num(holds.held.length)}</span>
+              )}
+              <kbd>F7</kbd>
+            </button>
+
             {/* Reprint, always present. Until now this meant leaving the till,
                 opening Sales History and finding the invoice — with a queue
                 waiting and a customer holding a torn receipt. */}
@@ -734,6 +862,31 @@ export default function POS({ darkMode, toggleDark }) {
                 )}
               </div>
             </div>
+
+            {/* What changed while this cart was parked. Shown on recall rather
+                than discovered at Complete Sale — a held cart reserves no
+                stock, so the shop may well have sold the same goods since. */}
+            {recallIssues.length > 0 && (
+              <div className="pos-recall-issues" role="alert">
+                <div className="pos-recall-issues-head">
+                  <Icon name="warning" size={15} />
+                  <span>{t('pos.recallChanged')}</span>
+                  <button type="button" className="pos-recall-dismiss"
+                          onClick={() => setRecallIssues([])}
+                          aria-label={t('common.close')}>✕</button>
+                </div>
+                <ul>
+                  {recallIssues.map((i, n) => (
+                    <li key={n}>
+                      {i.kind === 'insufficient' && t('pos.issueShort', { name: i.name, wanted: num(i.wanted), available: num(i.available) })}
+                      {i.kind === 'outOfStock'   && t('pos.issueOut', { name: i.name })}
+                      {i.kind === 'gone'         && t('pos.issueGone', { name: i.name })}
+                      {i.kind === 'priceChanged' && t('pos.issuePrice', { name: i.name, was: money(i.was), now: money(i.now) })}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Cart items */}
             <div className="pos-cart-items">
@@ -935,6 +1088,90 @@ export default function POS({ darkMode, toggleDark }) {
             <span className="pos-mcb-cta">{t('pos.reviewAndPay')} →</span>
           </span>
         </button>
+      )}
+
+      {/* ── RECALL A PARKED SALE ──────────────────────────────────────────────
+          Held, recalled and expired are separate lists on purpose. An expired
+          cart sitting among live ones is how somebody recalls the wrong thing
+          in a hurry, and a recalled one needs to say who has it. */}
+      {recallOpen && (
+        <div className="modal-overlay" onClick={() => setRecallOpen(false)}>
+          <div className="modal pos-recall" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">{t('pos.recallTitle')}</span>
+              <button className="close-btn" onClick={() => setRecallOpen(false)}>✕</button>
+            </div>
+            <div className="pos-recall-body">
+              {holds.held.length === 0 && holds.recalled.length === 0 && holds.expired.length === 0 && (
+                <div className="pos-recall-empty">{t('pos.noHeldSales')}</div>
+              )}
+
+              {holds.held.map((h) => (
+                <div key={h.id} className="pos-hold-row">
+                  <div className="pos-hold-main">
+                    <span className="pos-hold-no">{h.holdNo}</span>
+                    <span className="pos-hold-meta">
+                      {t('sales.itemCount', { count: num(h.itemCount) })}
+                      {' · '}<span className="num">{money(h.total)}</span>
+                      {h.customerName ? ` · ${h.customerName}` : ''}
+                      {h.heldBy ? ` · ${h.heldBy}` : ''}
+                    </span>
+                    <span className="pos-hold-time">{relTime(h.createdAt)}</span>
+                  </div>
+                  <div className="pos-hold-actions">
+                    <button type="button" className="ui-btn ui-btn--primary ui-btn--sm"
+                            onClick={() => doRecall(h.id)}>{t('pos.recall')}</button>
+                    <button type="button" className="ui-btn ui-btn--ghost ui-btn--sm"
+                            onClick={() => discardHold(h.id)}>{t('common.delete')}</button>
+                  </div>
+                </div>
+              ))}
+
+              {holds.recalled.length > 0 && (
+                <div className="pos-hold-group">
+                  <div className="pos-hold-group-title">{t('pos.inUseElsewhere')}</div>
+                  {holds.recalled.map((h) => (
+                    <div key={h.id} className="pos-hold-row is-taken">
+                      <div className="pos-hold-main">
+                        <span className="pos-hold-no">{h.holdNo}</span>
+                        <span className="pos-hold-meta">
+                          {t('pos.recalledByAt', {
+                            who: h.recalledByName || '—',
+                            when: h.recalledAt ? new Date(h.recalledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—',
+                          })}
+                        </span>
+                      </div>
+                      <div className="pos-hold-actions">
+                        <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm"
+                                onClick={() => restoreHold(h.id)}>{t('pos.restore')}</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {holds.expired.length > 0 && (
+                <div className="pos-hold-group">
+                  <div className="pos-hold-group-title">
+                    {t('pos.expiredAt', { hour: num(holds.expiryHour) })}
+                  </div>
+                  {holds.expired.map((h) => (
+                    <div key={h.id} className="pos-hold-row is-expired">
+                      <div className="pos-hold-main">
+                        <span className="pos-hold-no">{h.holdNo}</span>
+                        <span className="pos-hold-meta">
+                          {t('sales.itemCount', { count: num(h.itemCount) })}
+                          {' · '}<span className="num">{money(h.total)}</span>
+                          {' · '}{t('pos.expiredExplain')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── CONFIRM THE SALE ──────────────────────────────────────────────────

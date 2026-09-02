@@ -165,6 +165,16 @@ function connect() {
     }
 
     if (pids.length) {
+      // Parked carts referencing a purged product would be unrecallable
+      // wreckage, so they go with it. Holds left with no lines go too.
+      const hasHolds = await q(
+        `SELECT COUNT(*) AS n FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'held_sale_items'`);
+      if (Number(hasHolds[0].n) > 0) {
+        await run(`DELETE FROM held_sale_items WHERE productId IN (${inP})`);
+        await run(`DELETE FROM held_sales WHERE id NOT IN
+                     (SELECT DISTINCT heldSaleId FROM held_sale_items)`);
+      }
       await run(`DELETE FROM sale_items WHERE productId IN (${inP})`);
       await run(`DELETE FROM stock_movements WHERE productId IN (${inP})`);
       await run(`DELETE FROM products WHERE id IN (${inP})`);

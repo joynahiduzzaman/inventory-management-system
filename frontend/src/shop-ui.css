@@ -2308,3 +2308,89 @@ kbd {
   color: var(--accent);
 }
 .pos-change-ok { width: 100%; justify-content: center; }
+
+/* ══ Hold and recall ══════════════════════════════════════════════════════ */
+.pos-till-btn {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  min-height: 34px; padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--bg-card); color: var(--text-secondary);
+  font-family: var(--font-sans); font-size: var(--text-xs); font-weight: var(--weight-semi);
+  white-space: nowrap; cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.pos-till-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (hover: hover) and (pointer: fine) {
+  .pos-till-btn:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
+}
+@media (pointer: coarse) { .pos-till-btn { min-height: var(--tap); min-width: var(--tap); justify-content: center; } }
+.pos-till-btn kbd {
+  padding: 1px 5px; border: 1px solid var(--border-strong); border-radius: 4px;
+  font-size: 10px; color: var(--text-muted);
+}
+.pos-hold-badge {
+  min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--accent); color: var(--on-accent);
+  font-size: 10px; font-weight: var(--weight-bold);
+}
+@media (max-width: 1100px) { .pos-till-btn kbd { display: none; } }
+@media (max-width: 860px)  { .pos-till-label { display: none; } }
+
+/* ── What changed while the cart was parked ──────────────────────────────── */
+.pos-recall-issues {
+  flex: none;
+  margin: 0 var(--space-3) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warn-border);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.pos-recall-issues-head {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-xs); font-weight: var(--weight-bold);
+}
+.pos-recall-dismiss {
+  margin-left: auto; border: none; background: transparent;
+  color: inherit; cursor: pointer; font-size: var(--text-sm); line-height: 1;
+  min-width: 24px; min-height: 24px;
+}
+@media (pointer: coarse) { .pos-recall-dismiss { min-width: var(--tap); min-height: var(--tap); } }
+.pos-recall-issues ul { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
+.pos-recall-issues li { font-size: var(--text-xs); line-height: 1.5; overflow-wrap: anywhere; }
+
+/* ── The recall list ─────────────────────────────────────────────────────── */
+.pos-recall { max-width: 560px; width: 100%; }
+.pos-recall-body { padding: var(--space-3) var(--space-4) var(--space-4); max-height: 60vh; overflow-y: auto; }
+.pos-recall-empty { padding: var(--space-8) 0; text-align: center; color: var(--text-muted); font-size: var(--text-sm); }
+.pos-hold-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  margin-bottom: var(--space-2);
+}
+.pos-hold-row.is-taken   { border-left: 3px solid var(--info); }
+.pos-hold-row.is-expired { border-left: 3px solid var(--border-strong); opacity: 0.7; }
+.pos-hold-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pos-hold-no {
+  font-size: var(--text-sm); font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.pos-hold-meta { font-size: var(--text-xs); color: var(--text-secondary); overflow-wrap: anywhere; }
+.pos-hold-time { font-size: var(--text-xs); color: var(--text-muted); }
+.pos-hold-actions { display: flex; gap: var(--space-2); flex: none; }
+.pos-hold-group { margin-top: var(--space-4); }
+.pos-hold-group-title {
+  font-size: var(--text-xs); font-weight: var(--weight-bold);
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: var(--space-2);
+}
+@media (max-width: 560px) {
+  .pos-hold-row { flex-wrap: wrap; }
+  .pos-hold-actions { width: 100%; }
+  .pos-hold-actions .ui-btn { flex: 1; justify-content: center; }
+}

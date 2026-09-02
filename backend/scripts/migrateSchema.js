@@ -44,6 +44,22 @@ const EXPECTED = [
   { table: 'returns', column: 'appliedToDue' },
 ];
 
+/**
+ * Tables this script is allowed to CREATE, named one by one.
+ *
+ * Deliberately not "every model". `Model.sync()` on a model whose definition
+ * has drifted from production is exactly how a live table gets altered without
+ * anybody deciding to — and the drift would be invisible until it had already
+ * happened. An explicit list means creating a table is a reviewed act.
+ *
+ * sync() here only ever creates: a table that already exists is left alone,
+ * because nothing below passes `alter` or `force`.
+ */
+const CREATABLE_TABLES = [
+  { table: 'held_sales',      model: 'HeldSale' },
+  { table: 'held_sale_items', model: 'HeldSaleItem' },
+];
+
 (async () => {
   const { url } = parseDbUrl(process.env.TARGET_DATABASE_URL);
   if (!url) {
@@ -77,8 +93,20 @@ const EXPECTED = [
   );
   const present = new Set(rows.map((r) => `${r.t}.${r.c}`));
 
+  const tableRows = await db.query(
+    'SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = :db',
+    { type: db.QueryTypes.SELECT, replacements: { db: db.config.database } }
+  );
+  const tables = new Set(tableRows.map((r) => r.t));
+  const missingTables = CREATABLE_TABLES.filter((t) => !tables.has(t.table));
+
   const missing = EXPECTED.filter((e) => !present.has(`${e.table}.${e.column}`));
-  console.log('\nSchema check:');
+  console.log('\nTables:');
+  for (const t of CREATABLE_TABLES) {
+    const ok = tables.has(t.table);
+    console.log(`  ${ok ? '✓' : '✗'} ${t.table}${ok ? '' : '   WOULD BE CREATED from model ' + t.model}`);
+  }
+  console.log('\nColumns:');
   for (const e of EXPECTED) {
     const ok = present.has(`${e.table}.${e.column}`);
     console.log(`  ${ok ? '✓' : '✗'} ${e.table}.${e.column}${ok ? '' : '   MISSING'}`);
@@ -89,20 +117,49 @@ const EXPECTED = [
   console.log(`\n  sales rows on target: ${saleCount}`);
 
   if (CHECK_ONLY) {
-    console.log(missing.length
-      ? `\n--check: ${missing.length} column(s) missing. Re-run without --check to add them.`
+    const parts = [];
+    if (missingTables.length) parts.push(`${missingTables.length} table(s) to create`);
+    if (missing.length) parts.push(`${missing.length} column(s) to add`);
+    console.log(parts.length
+      ? `\n--check: ${parts.join(', ')}. Re-run without --check to apply.`
       : '\n--check: schema is up to date. Nothing to do.');
     await db.close();
-    process.exit(missing.length ? 2 : 0);
+    process.exit(parts.length ? 2 : 0);
   }
 
-  if (!missing.length) {
+  if (!missing.length && !missingTables.length) {
     console.log('\n✅ Schema already up to date. Nothing changed.');
     await db.close();
     process.exit(0);
   }
 
   console.log('\nApplying…');
+
+  // Tables first: a column or index may belong to one of them.
+  let createdTables = 0;
+  if (missingTables.length) {
+    const models = require('../models');
+    const qi = db.getQueryInterface();
+    for (const t of missingTables) {
+      const Model = models[t.model];
+      if (!Model) {
+        console.error(`   ⚠️  ${t.model} is listed as creatable but is not exported from models/`);
+        continue;
+      }
+      // NOT Model.sync(). A model is bound to the connection it was defined
+      // on — config/database, i.e. the LOCAL database — so sync() would create
+      // the table there and report success while the target still had none.
+      // It did exactly that once; the --check run afterwards is what caught it.
+      // Take the shape from the model and create it on the TARGET connection.
+      const attrs = typeof Model.getAttributes === 'function'
+        ? Model.getAttributes()
+        : Model.rawAttributes;
+      await qi.createTable(Model.getTableName(), attrs);
+      console.log(`   ↳ created table ${t.table} on ${db.config.database}`);
+      createdTables += 1;
+    }
+  }
+
   const added = await ensureColumns(db);
   // Indexes second: one of them is defined on a column added just above.
   const idx = await ensureIndexes(db);
@@ -115,8 +172,9 @@ const EXPECTED = [
   const now = new Set(after.map((r) => `${r.t}.${r.c}`));
   const stillMissing = EXPECTED.filter((e) => !now.has(`${e.table}.${e.column}`));
 
-  console.log(`\n  columns added: ${added}`);
-  console.log(`  indexes added: ${idx}`);
+  console.log(`\n  tables created: ${createdTables}`);
+  console.log(`  columns added:  ${added}`);
+  console.log(`  indexes added:  ${idx}`);
 
   if (stillMissing.length) {
     console.error(`\n❌ Still missing: ${stillMissing.map((e) => e.column).join(', ')}`);
