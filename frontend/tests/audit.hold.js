@@ -24,7 +24,11 @@ const puppeteer = require(path.join(
 ));
 
 const WEB = process.argv[2] || 'http://localhost:3000';
-const API = process.env.AUDIT_API || 'http://localhost:5000/api';
+// Derive the API from the site being driven. Pointing the browser at
+// production while building fixtures on localhost creates them in the wrong
+// database and every assertion then fails for the wrong reason.
+const API = process.env.AUDIT_API
+  || (WEB.includes('localhost') ? 'http://localhost:5000/api' : WEB.replace(/\/$/, '') + '/api');
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 
 const env = Object.fromEntries(
